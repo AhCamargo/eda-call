@@ -1,0 +1,16 @@
+FROM debian:11-slim
+
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+    asterisk \
+    ca-certificates \
+    curl \
+    espeak-ng \
+    sox \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 5038 5060/udp
+
+CMD ["/entrypoint.sh"]

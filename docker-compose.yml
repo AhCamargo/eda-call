@@ -1,0 +1,81 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: edacall_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-edacall}
+      POSTGRES_USER: ${POSTGRES_USER:-edacall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edacall}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-edacall}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  asterisk:
+    build:
+      context: ./asterisk
+      dockerfile: Dockerfile
+    container_name: edacall_asterisk
+    ports:
+      - "5038:5038"
+      - "5060:5060/udp"
+    volumes:
+      - ./asterisk/config:/etc/asterisk-custom
+      - ./asterisk/recordings:/var/spool/asterisk/monitor
+      - ./asterisk/sounds:/var/lib/asterisk/sounds/custom
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: edacall_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      asterisk:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      PORT: ${BACKEND_PORT:-5000}
+      DATABASE_URL: postgres://${POSTGRES_USER:-edacall}:${POSTGRES_PASSWORD:-edacall}@postgres:5432/${POSTGRES_DB:-edacall}
+      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      AMI_HOST: ${AMI_HOST:-asterisk}
+      AMI_PORT: ${AMI_PORT:-5038}
+      AMI_USERNAME: ${AMI_USERNAME:-admin}
+      AMI_PASSWORD: ${AMI_PASSWORD:-admin}
+      ASTERISK_SIP_CUSTOM_FILE: ${ASTERISK_SIP_CUSTOM_FILE:-/asterisk-config/sip_custom.conf}
+      ASTERISK_PJSIP_CUSTOM_FILE: ${ASTERISK_PJSIP_CUSTOM_FILE:-/asterisk-config/pjsip_custom.conf}
+      ASTERISK_RECORDINGS_DIR: ${ASTERISK_RECORDINGS_DIR:-/asterisk-recordings}
+      ASTERISK_SOUNDS_DIR: ${ASTERISK_SOUNDS_DIR:-/asterisk-sounds}
+    ports:
+      - "${BACKEND_PORT:-5000}:5000"
+    volumes:
+      - ./backend:/app
+      - ./asterisk/config:/asterisk-config
+      - ./asterisk/recordings:/asterisk-recordings
+      - ./asterisk/sounds:/asterisk-sounds
+      - /app/node_modules
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: edacall_frontend
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
