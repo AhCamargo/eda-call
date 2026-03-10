@@ -4,3 +4,4 @@ dist
 .env
 *.log
 backend/uploads
+asterisk/recordings/*.wav
