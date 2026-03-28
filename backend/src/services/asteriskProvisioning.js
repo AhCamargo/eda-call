@@ -2,8 +2,15 @@ const fs = require("fs/promises");
 const { asteriskSipCustomFile } = require("../config");
 const { runCommand } = require("../ami");
 
-const buildExtensionBlock = (number, secret) =>
-  `\n[${number}]\ntype=friend\nhost=dynamic\nsecret=${secret}\ncontext=default\ndisallow=all\nallow=g729\nallow=ulaw\nallow=alaw\ndtmfmode=rfc2833\nnat=force_rport,comedia\ndirectmedia=no\nqualify=yes\nqualifyfreq=30\n\n`;
+const buildExtensionBlock = (
+  number,
+  secret,
+  context = "default",
+  voipLineName = null,
+) => {
+  const setvarLine = voipLineName ? `setvar=VOIPLINE=${voipLineName}\n` : "";
+  return `\n[${number}]\ntype=friend\nhost=dynamic\nsecret=${secret}\ncontext=${context}\n${setvarLine}disallow=all\nallow=ulaw\nallow=alaw\ndtmfmode=rfc2833\nnat=force_rport,comedia\ndirectmedia=no\nqualify=yes\nqualifyfreq=30\n\n`;
+};
 
 const buildSipVoipLineBlock = ({
   name,
@@ -79,7 +86,12 @@ const removeNamedBlock = async ({ filePath, sectionName, scope }) => {
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
 };
 
-const upsertSipExtension = async ({ number, secret = "1234" }) => {
+const upsertSipExtension = async ({
+  number,
+  secret = "1234",
+  context = "default",
+  voipLineName = null,
+}) => {
   const numberText = String(number).trim();
   if (!numberText) {
     throw new Error("Número do ramal inválido");
@@ -88,7 +100,12 @@ const upsertSipExtension = async ({ number, secret = "1234" }) => {
   await upsertNamedBlock({
     filePath: asteriskSipCustomFile,
     sectionName: numberText,
-    blockContent: buildExtensionBlock(numberText, secret),
+    blockContent: buildExtensionBlock(
+      numberText,
+      secret,
+      context,
+      voipLineName,
+    ),
     scope: "sip-extension",
   });
 

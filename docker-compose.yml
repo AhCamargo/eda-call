@@ -24,6 +24,13 @@ services:
     ports:
       - "5038:5038"
       - "5060:5060/udp"
+      # Portas RTP para mídia de áudio (necessário para softphones fora do container)
+      - "10000-10099:10000-10099/udp"
+    environment:
+      # IP externo que o Asterisk anuncia no SDP. Para uso local (Docker + softphone no mesmo host): 127.0.0.1
+      # Para rede local (softphone em outra máquina): IP da máquina host, ex: 192.168.1.100
+      ASTERISK_EXTERN_IP: ${ASTERISK_EXTERN_IP:-127.0.0.1}
+      ASTERISK_EFIX_REGISTER: ${ASTERISK_EFIX_REGISTER:-}
     volumes:
       - ./asterisk/config:/etc/asterisk-custom
       - ./asterisk/recordings:/var/spool/asterisk/monitor
@@ -70,12 +77,11 @@ services:
     depends_on:
       - backend
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:5000}
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
 
 volumes:
   postgres_data:

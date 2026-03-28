@@ -4,7 +4,7 @@ import api, { setToken } from '../api';
 
 const PbxContext = createContext(null);
 
-export function PbxProvider({ token, onUnauthorized, children }) {
+export function PbxProvider({ token, user, onUnauthorized, children }) {
   const [statusCounts, setStatusCounts] = useState({
     online: 0,
     offline: 0,
@@ -22,7 +22,7 @@ export function PbxProvider({ token, onUnauthorized, children }) {
   const [reportUraLogs, setReportUraLogs] = useState([]);
   const [reportRecordings, setReportRecordings] = useState([]);
 
-  const socket = useMemo(() => io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'), []);
+  const socket = useMemo(() => io(import.meta.env.VITE_API_URL || 'http://localhost:5000'), []);
 
   useEffect(() => {
     setToken(token);
@@ -155,6 +155,11 @@ export function PbxProvider({ token, onUnauthorized, children }) {
     await fetchAll();
   };
 
+  const reprovisionExtension = async (id) => {
+    await api.post(`/extensions/${id}/provision`);
+    await fetchAll();
+  };
+
   const testCallBetweenExtensions = async (sourceExtensionId, targetExtensionId) => {
     const response = await api.post('/calls/test-between-extensions', {
       sourceExtensionId,
@@ -170,6 +175,7 @@ export function PbxProvider({ token, onUnauthorized, children }) {
   };
 
   const value = {
+    user,
     statusCounts,
     extensions,
     voipLines,
@@ -196,6 +202,7 @@ export function PbxProvider({ token, onUnauthorized, children }) {
     updateVoipLine,
     deleteVoipLine,
     reprovisionVoipLine,
+    reprovisionExtension,
     testCallBetweenExtensions,
     deleteRecording
   };

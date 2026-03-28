@@ -14,7 +14,7 @@ const User = sequelize.define("User", {
   username: { type: DataTypes.STRING, allowNull: false, unique: true },
   passwordHash: { type: DataTypes.STRING, allowNull: false },
   role: {
-    type: DataTypes.ENUM("admin", "agent"),
+    type: DataTypes.ENUM("admin", "supervisor", "agent"),
     allowNull: false,
     defaultValue: "admin",
   },
@@ -23,6 +23,7 @@ const User = sequelize.define("User", {
 const Extension = sequelize.define("Extension", {
   number: { type: DataTypes.STRING, allowNull: false, unique: true },
   name: { type: DataTypes.STRING, allowNull: false },
+  password: { type: DataTypes.STRING, allowNull: false }, // Senha SIP do ramal
   pauseReason: { type: DataTypes.STRING, allowNull: true },
   status: {
     type: DataTypes.ENUM(
@@ -36,6 +37,7 @@ const Extension = sequelize.define("Extension", {
     allowNull: false,
     defaultValue: "offline",
   },
+  voipLineId: { type: DataTypes.INTEGER, allowNull: true },
 });
 
 const VoipLine = sequelize.define("VoipLine", {
@@ -229,6 +231,9 @@ CallLog.belongsTo(Extension, { foreignKey: "extensionId" });
 VoipLine.hasMany(CallLog, { foreignKey: "voipLineId" });
 CallLog.belongsTo(VoipLine, { foreignKey: "voipLineId" });
 
+VoipLine.hasMany(Extension, { foreignKey: "voipLineId" });
+Extension.belongsTo(VoipLine, { foreignKey: "voipLineId" });
+
 Campaign.hasMany(CallRecording, { foreignKey: "campaignId" });
 CallRecording.belongsTo(Campaign, { foreignKey: "campaignId" });
 
@@ -269,12 +274,22 @@ const syncDatabase = async () => {
   await sequelize.authenticate();
   await sequelize
     .query(
+      "ALTER TYPE \"enum_Users_role\" ADD VALUE IF NOT EXISTS 'supervisor'",
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
       "ALTER TYPE \"enum_Extensions_status\" ADD VALUE IF NOT EXISTS 'ringing'",
     )
     .catch(() => {});
   await sequelize
     .query(
       'ALTER TABLE "Extensions" ADD COLUMN IF NOT EXISTS "pauseReason" VARCHAR(255)',
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      'ALTER TABLE "Extensions" ADD COLUMN IF NOT EXISTS "voipLineId" INTEGER',
     )
     .catch(() => {});
   await sequelize

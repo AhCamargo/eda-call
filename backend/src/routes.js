@@ -2,6 +2,7 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const multer = require("multer");
+const bcrypt = require("bcryptjs");
 const { parse } = require("csv-parse/sync");
 const { login, verifyToken } = require("./auth");
 const {
@@ -111,6 +112,124 @@ const createRoutes = (io) => {
 
   router.get("/health", (_, res) => res.json({ ok: true }));
   router.post("/auth/login", login);
+
+  // Retorna dados do usuário autenticado
+  router.get("/auth/me", verifyToken, async (req, res) => {
+    const { User } = require("./db");
+    const user = await User.findByPk(req.user.id, {
+      attributes: ["id", "username", "role"],
+    });
+    if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+    return res.json(user);
+  });
+
+  // ── Middleware admin ────────────────────────────────────────────
+  const requireAdmin = (req, res, next) => {
+    if (req.user?.role !== "admin")
+      return res.status(403).json({ message: "Acesso negado" });
+    return next();
+  };
+
+  // ── CRUD de Usuários (admin only) ────────────────────────────────
+  router.get("/users", verifyToken, requireAdmin, async (req, res) => {
+    const { User } = require("./db");
+    const users = await User.findAll({
+      attributes: ["id", "username", "role", "createdAt"],
+      order: [["createdAt", "ASC"]],
+    });
+    return res.json(users);
+  });
+
+  router.post("/users", verifyToken, requireAdmin, async (req, res) => {
+    const { User } = require("./db");
+    const { username, password, role } = req.body;
+    if (!username || !password || !role)
+      return res.status(400).json({ message: "Preencha todos os campos" });
+    if (!["admin", "supervisor", "agent"].includes(role))
+      return res.status(400).json({ message: "Role inválido" });
+    const existing = await User.findOne({ where: { username } });
+    if (existing)
+      return res.status(409).json({ message: "Username já existe" });
+    const passwordHash = bcrypt.hashSync(password, 10);
+    const user = await User.create({ username, passwordHash, role });
+    return res.status(201).json({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+    });
+  });
+
+  router.patch("/users/:id", verifyToken, requireAdmin, async (req, res) => {
+    const { User } = require("./db");
+    const user = await User.findByPk(req.params.id);
+    if (!user)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    const { username, password, role } = req.body;
+    if (username) user.username = username;
+    if (password) user.passwordHash = bcrypt.hashSync(password, 10);
+    if (role && ["admin", "supervisor", "agent"].includes(role))
+      user.role = role;
+    await user.save();
+    return res.json({
+      id: user.id,
+      username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+    });
+  });
+
+  router.delete("/users/:id", verifyToken, requireAdmin, async (req, res) => {
+    const { User } = require("./db");
+    if (String(req.user.id) === String(req.params.id))
+      return res
+        .status(400)
+        .json({ message: "Não é possível excluir sua própria conta" });
+    const user = await User.findByPk(req.params.id);
+    if (!user)
+      return res.status(404).json({ message: "Usuário não encontrado" });
+    await user.destroy();
+    return res.json({ message: "Usuário excluído" });
+  });
+
+  // Endpoints do Supervisor
+  router.get("/supervisor/agents", verifyToken, async (req, res) => {
+    const agents = await Extension.findAll({
+      include: [{ model: VoipLine, as: "VoipLine", attributes: ["name"] }],
+      order: [["name", "ASC"]],
+    });
+    return res.json(
+      agents.map((a) => ({
+        id: a.id,
+        number: a.number,
+        name: a.name,
+        status: a.status,
+        pauseReason: a.pauseReason,
+        voipLine: a.VoipLine ? a.VoipLine.name : null,
+        updatedAt: a.updatedAt,
+      }))
+    );
+  });
+
+  router.post("/supervisor/agents/:id/force-pause", verifyToken, async (req, res) => {
+    const agent = await Extension.findByPk(req.params.id);
+    if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
+    agent.status = "paused";
+    agent.pauseReason = req.body.reason || "Pausa administrativa";
+    await agent.save();
+    io.emit("dashboard:update");
+    return res.json({ ok: true });
+  });
+
+  router.post("/supervisor/agents/:id/resume", verifyToken, async (req, res) => {
+    const agent = await Extension.findByPk(req.params.id);
+    if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
+    agent.status = "online";
+    agent.pauseReason = null;
+    await agent.save();
+    io.emit("dashboard:update");
+    return res.json({ ok: true });
+  });
 
   router.post("/internal/ura/log", async (req, res) => {
     const receivedKey = req.headers["x-internal-key"];
@@ -543,12 +662,38 @@ const createRoutes = (io) => {
   });
 
   router.get("/extensions", async (_, res) => {
-    const extensions = await Extension.findAll({ order: [["number", "ASC"]] });
-    res.json(extensions.map(withExtensionSector));
+    const extensions = await Extension.findAll({
+      include: [
+        { model: VoipLine, attributes: ["id", "name", "host", "port"] },
+      ],
+      order: [["number", "ASC"]],
+    });
+    // Retorna também o campo password para administração (remova se não quiser exibir a senha)
+    res.json(
+      extensions.map((e) => ({
+        ...withExtensionSector(e),
+        password: e.password,
+        voipLineId: e.voipLineId || null,
+        VoipLine: e.VoipLine
+          ? { id: e.VoipLine.id, name: e.VoipLine.name }
+          : null,
+      })),
+    );
   });
 
+  // Função utilitária para gerar senha aleatória segura
+  function generateRandomPassword(length = 10) {
+    const chars =
+      "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*";
+    let password = "";
+    for (let i = 0; i < length; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+
   router.post("/extensions", async (req, res) => {
-    const { number, name, sipPassword } = req.body;
+    const { number, name, sipPassword, voipLineId } = req.body;
     const normalizedNumber = normalizeExtensionNumber(number);
 
     if (!isValidExtensionNumber(normalizedNumber)) {
@@ -558,16 +703,33 @@ const createRoutes = (io) => {
       });
     }
 
+    // Gera senha aleatória se não for fornecida
+    const password = sipPassword || generateRandomPassword();
+
+    // Salva ramal com senha persistida
     const extension = await Extension.create({
       number: normalizedNumber,
       name,
+      password,
       status: "offline",
+      voipLineId: voipLineId ? Number(voipLineId) : null,
     });
 
     try {
+      // determine context from associated VoIP line (if provided)
+      let context = "default";
+      if (voipLineId) {
+        const line = await VoipLine.findByPk(Number(voipLineId));
+        if (line && line.context) context = line.context;
+      }
+
       await upsertSipExtension({
         number: normalizedNumber,
-        secret: sipPassword || "1234",
+        secret: password,
+        context,
+        voipLineName: voipLineId
+          ? (await VoipLine.findByPk(Number(voipLineId)))?.name
+          : null,
       });
     } catch (error) {
       return res.status(201).json({
@@ -579,7 +741,8 @@ const createRoutes = (io) => {
     }
 
     io.emit("dashboard:update");
-    res.status(201).json(withExtensionSector(extension));
+    // Retorna ramal e senha ao frontend
+    res.status(201).json({ ...withExtensionSector(extension), password });
   });
 
   router.patch("/extensions/:id/status", async (req, res) => {
@@ -605,10 +768,9 @@ const createRoutes = (io) => {
     }
 
     const reason = String(req.body?.reason || "").trim();
-    const allowedReasons = ["Banheiro", "Suporte Técnico", "Reunião"];
 
-    if (!allowedReasons.includes(reason)) {
-      return res.status(400).json({ message: "Motivo de pausa inválido" });
+    if (!reason) {
+      return res.status(400).json({ message: "Motivo de pausa é obrigatório" });
     }
 
     extension.status = "paused";
@@ -662,17 +824,45 @@ const createRoutes = (io) => {
     const oldNumber = extension.number;
     extension.number = nextNumber;
     extension.name = nextName;
+
+    // Atualiza senha se fornecida
+    let password = extension.password;
+    if (req.body?.sipPassword) {
+      password = req.body.sipPassword;
+      extension.password = password;
+    }
+
+    // Atualiza a linha VoIP associada se fornecida
+    if (req.body?.voipLineId !== undefined) {
+      extension.voipLineId = req.body.voipLineId
+        ? Number(req.body.voipLineId)
+        : null;
+    }
+
     await extension.save();
 
-    const secret = req.body?.sipPassword || "1234";
     if (oldNumber !== nextNumber) {
       await removeExtensionProvision({ number: oldNumber });
     }
 
-    await upsertSipExtension({ number: nextNumber, secret });
+    // determine context from associated VoIP line (if any)
+    let context = "default";
+    if (extension.voipLineId) {
+      const line = await VoipLine.findByPk(Number(extension.voipLineId));
+      if (line && line.context) context = line.context;
+    }
+
+    await upsertSipExtension({
+      number: nextNumber,
+      secret: password,
+      context,
+      voipLineName: extension.voipLineId
+        ? (await VoipLine.findByPk(Number(extension.voipLineId)))?.name
+        : null,
+    });
 
     io.emit("dashboard:update");
-    return res.json(withExtensionSector(extension));
+    return res.json({ ...withExtensionSector(extension), password });
   });
 
   router.delete("/extensions/:id", async (req, res) => {
@@ -695,20 +885,46 @@ const createRoutes = (io) => {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
 
+    // Usa a senha persistida, a menos que uma nova seja enviada
+    let password = extension.password;
+    if (req.body?.sipPassword) {
+      password = req.body.sipPassword;
+      extension.password = password;
+      await extension.save();
+    }
+
+    // determine context: prefer provided voipLineId in body, fallback to stored association
+    let context = "default";
+    const voipLineIdFromBody = req.body?.voipLineId;
+    const voipLineToUse =
+      voipLineIdFromBody !== undefined
+        ? voipLineIdFromBody
+        : extension.voipLineId;
+    if (voipLineToUse) {
+      const line = await VoipLine.findByPk(Number(voipLineToUse));
+      if (line && line.context) context = line.context;
+    }
+
     await upsertSipExtension({
       number: extension.number,
-      secret: req.body?.sipPassword || "1234",
+      secret: password,
+      context,
+      voipLineName: voipLineToUse
+        ? (await VoipLine.findByPk(Number(voipLineToUse)))?.name
+        : null,
     });
 
-    return res.json({ message: "Ramal provisionado no Asterisk" });
+    return res.json({ message: "Ramal provisionado no Asterisk", password });
   });
 
   router.post("/extensions/provision-all", async (req, res) => {
     const extensions = await Extension.findAll({ order: [["number", "ASC"]] });
-    const secret = req.body?.sipPassword || "1234";
 
     for (const extension of extensions) {
-      await upsertSipExtension({ number: extension.number, secret });
+      await upsertSipExtension({
+        number: extension.number,
+        secret: extension.password,
+      });
     }
 
     return res.json({
@@ -916,6 +1132,38 @@ const createRoutes = (io) => {
       order: [["createdAt", "DESC"]],
     });
     res.json(campaigns);
+  });
+
+  router.get("/campaigns/:id/report", async (req, res) => {
+    const campaign = await Campaign.findByPk(req.params.id, {
+      include: [
+        { model: CampaignContact, as: "contacts" },
+        { model: Extension, as: "extensions", attributes: ["id", "number", "name"] },
+        { model: VoipLine, as: "voipLines", attributes: ["id", "name"] },
+        {
+          model: CallLog,
+          as: "calls",
+          include: [
+            { model: Extension, attributes: ["id", "number", "name"] },
+          ],
+          order: [["createdAt", "DESC"]],
+        },
+      ],
+    });
+    if (!campaign) return res.status(404).json({ message: "Campanha não encontrada" });
+
+    const calls = campaign.calls || [];
+    const contacts = campaign.contacts || [];
+    const stats = {
+      totalContacts: contacts.length,
+      totalCalls: calls.length,
+      atendida: calls.filter((c) => c.result === "atendida").length,
+      nao_atendida: calls.filter((c) => c.result === "nao_atendida").length,
+      numero_nao_existe: calls.filter((c) => c.result === "numero_nao_existe").length,
+      rejeitada: calls.filter((c) => c.result === "rejeitada").length,
+    };
+
+    return res.json({ campaign: { id: campaign.id, name: campaign.name, status: campaign.status }, stats, calls });
   });
 
   router.post("/campaigns", async (req, res) => {

@@ -1,13 +1,10 @@
-"use client";
-
-import { useState } from 'react';
-import { Box, Button, Paper, Stack, TextField, Typography } from '@mui/material';
+import { useState, useEffect } from 'react';
 import { createTheme, CssBaseline, ThemeProvider } from '@mui/material';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { jwtDecode } from 'jwt-decode';
 import api from './api';
 import Layout from './Layout';
-import Dashboard from './views/Dashboard';
 import Ramais from './views/Ramais';
 import Campanhas from './views/Campanhas';
 import UraReversa from './views/UraReversa';
@@ -15,85 +12,173 @@ import UraReversaRelatorios from './views/UraReversaRelatorios';
 import LinhasVoip from './views/LinhasVoip';
 import Relatorios from './views/Relatorios';
 import Usuario from './views/Usuario';
+import CallCenter from './views/CallCenter';
+import AgentView from './views/AgentView';
+import SupervisorView from './views/SupervisorView';
+import Gravacoes from './views/Gravacoes';
+import Usuarios from './views/Usuarios';
 import { PbxProvider } from './context/PbxContext';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertCircle, PhoneCall } from 'lucide-react';
 import './i18n';
-import './styles.css';
 
-const theme = createTheme({
+const muiTheme = createTheme({
   palette: {
-    mode: 'light'
-  }
+    mode: 'dark',
+    primary: { main: '#6c5ce7', light: '#8577ed', dark: '#5a4bd4', contrastText: '#ffffff' },
+    secondary: { main: '#00d2ff' },
+    info: { main: '#41D1FF' },
+    warning: { main: '#FFEA83' },
+    success: { main: '#00c853' },
+    background: { default: '#0a0a0f', paper: '#16161f' },
+    text: { primary: '#e4e4eb', secondary: '#9494a8' },
+  },
+  components: {
+    MuiCssBaseline: { styleOverrides: { body: { backgroundColor: '#0a0a0f' } } },
+  },
 });
 
-function App() {
-  const { t } = useTranslation();
-  const [token, setAuthToken] = useState(
-    typeof window !== 'undefined' ? localStorage.getItem('token') || '' : ''
-  );
-  const [loginForm, setLoginForm] = useState({ username: 'admin', password: '123456' });
+const getDefaultRoute = (role) => {
+  if (role === 'agent') return '/agent';
+  if (role === 'supervisor') return '/supervisor';
+  return '/callcenter';
+};
 
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    const response = await api.post('/auth/login', loginForm);
-    localStorage.setItem('token', response.data.token);
-    setAuthToken(response.data.token);
+function LoginScreen({ onLogin }) {
+  const { t } = useTranslation();
+  const [form, setForm] = useState({ username: '', password: '' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const res = await api.post('/auth/login', form);
+      localStorage.setItem('token', res.data.token);
+      onLogin(res.data.token);
+    } catch {
+      setError('Usuário ou senha inválidos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen grid place-items-center bg-background p-4">
+      <Card className="w-full max-w-sm">
+        <CardHeader className="space-y-1 text-center">
+          <div className="flex justify-center mb-2">
+            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+              <PhoneCall className="h-6 w-6 text-primary" />
+            </div>
+          </div>
+          <CardTitle className="text-xl">{t('login.title')}</CardTitle>
+          
+        </CardHeader>
+        <CardContent>
+          {error && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">{t('login.username')}</label>
+              <input
+                autoComplete="username"
+                value={form.username}
+                onChange={(e) => setForm((p) => ({ ...p, username: e.target.value }))}
+                required
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">{t('login.password')}</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={form.password}
+                onChange={(e) => setForm((p) => ({ ...p, password: e.target.value }))}
+                required
+                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              />
+            </div>
+            <Button type="submit" className="w-full" disabled={loading}>
+              {loading ? 'Entrando...' : t('login.enter')}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function App() {
+  const [token, setAuthToken] = useState(localStorage.getItem('token') || '');
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    if (token) {
+      try {
+        setUser(jwtDecode(token));
+      } catch {
+        localStorage.removeItem('token');
+        setAuthToken('');
+        setUser(null);
+      }
+    } else {
+      setUser(null);
+    }
+  }, [token]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setAuthToken('');
+    setUser(null);
   };
 
   if (!token) {
     return (
-      <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: 2 }}>
-        <Paper sx={{ width: '100%', maxWidth: 420, p: 3 }}>
-          <Typography variant="h5" sx={{ mb: 2 }}>
-            {t('login.title')}
-          </Typography>
-          <Box component="form" onSubmit={handleLogin}>
-            <Stack spacing={2}>
-              <TextField
-                label={t('login.username')}
-                value={loginForm.username}
-                onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
-                fullWidth
-              />
-              <TextField
-                type="password"
-                label={t('login.password')}
-                value={loginForm.password}
-                onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
-                fullWidth
-              />
-              <Button type="submit" variant="contained">
-                {t('login.enter')}
-              </Button>
-            </Stack>
-          </Box>
-        </Paper>
-      </Box>
+      <ThemeProvider theme={muiTheme}>
+        <CssBaseline />
+        <LoginScreen onLogin={setAuthToken} />
+      </ThemeProvider>
     );
   }
 
   return (
-    <ThemeProvider theme={theme}>
+    <ThemeProvider theme={muiTheme}>
       <CssBaseline />
       <PbxProvider
         token={token}
-        onUnauthorized={() => {
-          localStorage.removeItem('token');
-          setAuthToken('');
-        }}
+        user={user}
+        onUnauthorized={handleLogout}
       >
         <BrowserRouter>
           <Routes>
-            <Route element={<Layout />}>
-              <Route path="/" element={<Dashboard />} />
+            <Route element={<Layout onLogout={handleLogout} />}>
+              <Route path="/" element={<Navigate to={getDefaultRoute(user?.role)} replace />} />
+              <Route path="/callcenter" element={<CallCenter />} />
+              <Route path="/agent" element={<AgentView />} />
+              <Route path="/supervisor" element={<SupervisorView />} />
               <Route path="/ramais" element={<Ramais />} />
               <Route path="/campanhas" element={<Navigate to="/campanhas/discador" replace />} />
               <Route path="/campanhas/discador" element={<Campanhas />} />
               <Route path="/campanhas/ura-reversa" element={<UraReversa />} />
               <Route path="/campanhas/ura-reversa/relatorios" element={<UraReversaRelatorios />} />
               <Route path="/linhas-voip" element={<LinhasVoip />} />
+              <Route path="/gravacoes" element={<Gravacoes />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/usuario" element={<Usuario />} />
-              <Route path="*" element={<Navigate to="/" replace />} />
+              {user?.role === 'admin' && (
+                <Route path="/usuarios" element={<Usuarios />} />
+              )}
+              <Route path="*" element={<Navigate to={getDefaultRoute(user?.role)} replace />} />
             </Route>
           </Routes>
         </BrowserRouter>

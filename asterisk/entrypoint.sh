@@ -21,6 +21,37 @@ if [ -f /etc/asterisk/sip.conf ]; then
   fi
 fi
 
+# Gera /etc/asterisk/sip_nat_runtime.conf com o externip correto (não modifica arquivos do volume)
+EXTERN_IP="${ASTERISK_EXTERN_IP:-127.0.0.1}"
+EFIX_REGISTER="${ASTERISK_EFIX_REGISTER:-}"
+
+cat > /etc/asterisk/sip_nat_runtime.conf << EOF
+; Gerado automaticamente pelo entrypoint — não editar manualmente
+[general]
+externip=${EXTERN_IP}
+localnet=127.0.0.0/8
+localnet=10.0.0.0/8
+localnet=172.16.0.0/12
+localnet=192.168.0.0/16
+rtpstart=10000
+rtpend=10099
+directmedia=no
+bindaddr=0.0.0.0
+nat=force_rport
+EOF
+
+# Adiciona linha de registro SIP se ASTERISK_EFIX_REGISTER estiver definida
+if [ -n "${EFIX_REGISTER}" ]; then
+  printf "\nregister => ${EFIX_REGISTER}:5060\n" >> /etc/asterisk/sip_nat_runtime.conf
+fi
+
+if [ -f /etc/asterisk/sip.conf ]; then
+  if ! grep -q "sip_nat_runtime.conf" /etc/asterisk/sip.conf; then
+    # Inclui ANTES do sip_custom para que as extensões possam sobrescrever se necessário
+    sed -i '1s/^/#include \/etc\/asterisk\/sip_nat_runtime.conf\n/' /etc/asterisk/sip.conf
+  fi
+fi
+
 if [ -f /etc/asterisk/extensions.conf ]; then
   if ! grep -q "#include /etc/asterisk-custom/extensions_custom.conf" /etc/asterisk/extensions.conf; then
     printf "\n#include /etc/asterisk-custom/extensions_custom.conf\n" >> /etc/asterisk/extensions.conf

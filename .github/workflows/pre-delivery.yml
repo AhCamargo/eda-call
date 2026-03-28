@@ -1,0 +1,37 @@
+name: Pre-Delivery Checks
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  pre-delivery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Enable pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@latest --activate
+
+      - name: Backend: install & checks
+        working-directory: eda-call/backend
+        run: |
+          pnpm install
+          pnpm run lint --if-present
+          pnpm test --if-present
+
+      - name: Frontend: install & build
+        working-directory: eda-call/frontend
+        run: |
+          pnpm install
+          pnpm run build
