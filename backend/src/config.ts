@@ -1,6 +1,6 @@
-require("dotenv").config();
+import "dotenv/config";
 
-module.exports = {
+const config = {
   port: Number(process.env.PORT || 5000),
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET || "supersecret",
@@ -18,3 +18,5 @@ module.exports = {
     password: process.env.AMI_PASSWORD || "admin",
   },
 };
+
+export default config;

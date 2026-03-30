@@ -1,16 +1,16 @@
-const { Sequelize, DataTypes } = require("sequelize");
-const config = require("./config");
+import { Sequelize, DataTypes } from "sequelize";
+import config from "./config";
 
 if (!config.databaseUrl) {
   throw new Error("DATABASE_URL não configurada.");
 }
 
-const sequelize = new Sequelize(config.databaseUrl, {
+export const sequelize = new Sequelize(config.databaseUrl, {
   dialect: "postgres",
   logging: false,
 });
 
-const User = sequelize.define("User", {
+export const User = sequelize.define("User", {
   username: { type: DataTypes.STRING, allowNull: false, unique: true },
   passwordHash: { type: DataTypes.STRING, allowNull: false },
   role: {
@@ -20,7 +20,7 @@ const User = sequelize.define("User", {
   },
 });
 
-const Extension = sequelize.define("Extension", {
+export const Extension = sequelize.define("Extension", {
   number: { type: DataTypes.STRING, allowNull: false, unique: true },
   name: { type: DataTypes.STRING, allowNull: false },
   password: { type: DataTypes.STRING, allowNull: false }, // Senha SIP do ramal
@@ -40,7 +40,7 @@ const Extension = sequelize.define("Extension", {
   voipLineId: { type: DataTypes.INTEGER, allowNull: true },
 });
 
-const VoipLine = sequelize.define("VoipLine", {
+export const VoipLine = sequelize.define("VoipLine", {
   name: { type: DataTypes.STRING, allowNull: false, unique: true },
   username: { type: DataTypes.STRING, allowNull: false },
   secret: { type: DataTypes.STRING, allowNull: false },
@@ -58,7 +58,7 @@ const VoipLine = sequelize.define("VoipLine", {
   },
 });
 
-const Campaign = sequelize.define("Campaign", {
+export const Campaign = sequelize.define("Campaign", {
   name: { type: DataTypes.STRING, allowNull: false },
   status: {
     type: DataTypes.ENUM("pending", "in_progress", "completed"),
@@ -72,14 +72,14 @@ const Campaign = sequelize.define("Campaign", {
   },
 });
 
-const CampaignExtension = sequelize.define("CampaignExtension", {});
-const CampaignVoipLine = sequelize.define("CampaignVoipLine", {});
+export const CampaignExtension = sequelize.define("CampaignExtension", {});
+export const CampaignVoipLine = sequelize.define("CampaignVoipLine", {});
 
-const CampaignContact = sequelize.define("CampaignContact", {
+export const CampaignContact = sequelize.define("CampaignContact", {
   phoneNumber: { type: DataTypes.STRING, allowNull: false },
 });
 
-const CallLog = sequelize.define("CallLog", {
+export const CallLog = sequelize.define("CallLog", {
   phoneNumber: { type: DataTypes.STRING, allowNull: false },
   result: {
     type: DataTypes.ENUM(
@@ -93,7 +93,7 @@ const CallLog = sequelize.define("CallLog", {
   },
 });
 
-const CallRecording = sequelize.define("CallRecording", {
+export const CallRecording = sequelize.define("CallRecording", {
   filePath: { type: DataTypes.STRING, allowNull: false },
   durationSeconds: {
     type: DataTypes.INTEGER,
@@ -103,7 +103,7 @@ const CallRecording = sequelize.define("CallRecording", {
   callUniqueId: { type: DataTypes.STRING, allowNull: true },
 });
 
-const UraLog = sequelize.define("UraLog", {
+export const UraLog = sequelize.define("UraLog", {
   uraRef: { type: DataTypes.STRING, allowNull: true },
   phoneNumber: { type: DataTypes.STRING, allowNull: false },
   selectedOption: { type: DataTypes.STRING, allowNull: true },
@@ -111,7 +111,7 @@ const UraLog = sequelize.define("UraLog", {
   result: { type: DataTypes.STRING, allowNull: false, defaultValue: "pending" },
 });
 
-const UraReverseCampaign = sequelize.define("UraReverseCampaign", {
+export const UraReverseCampaign = sequelize.define("UraReverseCampaign", {
   name: { type: DataTypes.STRING, allowNull: false },
   status: {
     type: DataTypes.ENUM("draft", "running", "paused", "finished"),
@@ -166,7 +166,7 @@ const UraReverseCampaign = sequelize.define("UraReverseCampaign", {
   },
 });
 
-const UraReverseOption = sequelize.define("UraReverseOption", {
+export const UraReverseOption = sequelize.define("UraReverseOption", {
   keyDigit: { type: DataTypes.STRING(1), allowNull: false },
   actionType: {
     type: DataTypes.ENUM("transfer_extension", "speak_commercial", "hangup"),
@@ -176,7 +176,7 @@ const UraReverseOption = sequelize.define("UraReverseOption", {
   targetExtension: { type: DataTypes.STRING, allowNull: true },
 });
 
-const UraReverseContact = sequelize.define("UraReverseContact", {
+export const UraReverseContact = sequelize.define("UraReverseContact", {
   phoneNumber: { type: DataTypes.STRING, allowNull: false },
   status: {
     type: DataTypes.ENUM(
@@ -270,7 +270,7 @@ UraReverseContact.belongsTo(UraReverseCampaign, {
   foreignKey: "campaignId",
 });
 
-const syncDatabase = async () => {
+export const syncDatabase = async () => {
   await sequelize.authenticate();
   await sequelize
     .query(
@@ -431,22 +431,4 @@ const syncDatabase = async () => {
     )
     .catch(() => {});
   await sequelize.sync();
-};
-
-module.exports = {
-  sequelize,
-  syncDatabase,
-  User,
-  Extension,
-  VoipLine,
-  Campaign,
-  CampaignContact,
-  CampaignExtension,
-  CampaignVoipLine,
-  CallLog,
-  CallRecording,
-  UraLog,
-  UraReverseCampaign,
-  UraReverseOption,
-  UraReverseContact,
 };

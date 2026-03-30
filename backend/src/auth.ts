@@ -1,9 +1,18 @@
-const jwt = require("jsonwebtoken");
-const bcrypt = require("bcryptjs");
-const { User } = require("./db");
-const { jwtSecret } = require("./config");
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import { Request, Response, NextFunction } from "express";
+import { User } from "./db";
+import config from "./config";
 
-const login = async (req, res) => {
+declare global {
+  namespace Express {
+    interface Request {
+      user?: { id: number; role: string; username: string };
+    }
+  }
+}
+
+export const login = async (req: Request, res: Response) => {
   const { username, password } = req.body;
   const user = await User.findOne({ where: { username } });
 
@@ -16,13 +25,13 @@ const login = async (req, res) => {
     return res.status(401).json({ message: "Senha inválida" });
   }
 
-  const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, jwtSecret, {
+  const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, config.jwtSecret, {
     expiresIn: "8h",
   });
   return res.json({ token });
 };
 
-const verifyToken = (req, res, next) => {
+export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
@@ -31,11 +40,9 @@ const verifyToken = (req, res, next) => {
   }
 
   try {
-    req.user = jwt.verify(token, jwtSecret);
+    req.user = jwt.verify(token, config.jwtSecret) as { id: number; role: string; username: string };
     return next();
   } catch {
     return res.status(401).json({ message: "Token inválido" });
   }
 };
-
-module.exports = { login, verifyToken };

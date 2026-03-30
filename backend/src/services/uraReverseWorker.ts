@@ -1,31 +1,36 @@
-const { Op } = require("sequelize");
-const {
+import { Op } from "sequelize";
+import { Server } from "socket.io";
+import {
   UraReverseCampaign,
   UraReverseContact,
   UraReverseOption,
   VoipLine,
-} = require("../db");
-const { originateReverseIvr } = require("../ami");
+} from "../db";
+import { originateReverseIvr } from "../ami";
 
-const runningState = {
+const runningState: {
+  io: Server | null;
+  timer: ReturnType<typeof setInterval> | null;
+  activeByCampaign: Map<number, Set<number>>;
+} = {
   io: null,
   timer: null,
   activeByCampaign: new Map(),
 };
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const isPhoneValid = (phone) => /^\d{10,14}$/.test(String(phone || "").trim());
+const isPhoneValid = (phone: any) => /^\d{10,14}$/.test(String(phone || "").trim());
 
-const emitCampaignStats = async (campaignId) => {
+export const emitCampaignStats = async (campaignId: number) => {
   if (!runningState.io) return;
 
   const contacts = await UraReverseContact.findAll({
     where: { campaignId },
     attributes: ["status"],
-  });
+  }) as any[];
 
-  const stats = {
+  const stats: Record<string, number> = {
     calling: 0,
     answered: 0,
     no_answer: 0,
@@ -45,7 +50,7 @@ const emitCampaignStats = async (campaignId) => {
   runningState.io.emit("ura-reverse:stats", { campaignId, stats });
 };
 
-const emitCallEvent = (payload) => {
+const emitCallEvent = (payload: any) => {
   if (!runningState.io) return;
   runningState.io.emit("ura-reverse:call-event", payload);
 };
@@ -57,8 +62,15 @@ const markContactResult = async ({
   result,
   selectedOption = null,
   recordingPath = null,
+}: {
+  contactId: number;
+  campaignId: number;
+  status: string;
+  result: string;
+  selectedOption?: string | null;
+  recordingPath?: string | null;
 }) => {
-  const contact = await UraReverseContact.findByPk(contactId);
+  const contact = await UraReverseContact.findByPk(contactId) as any;
   if (!contact) return;
 
   contact.status = status;
@@ -89,9 +101,9 @@ const markContactResult = async ({
   await emitCampaignStats(campaignId);
 };
 
-const buildOptionMaps = (options) => {
-  const actionMap = {};
-  const targetMap = {};
+const buildOptionMaps = (options: any[]) => {
+  const actionMap: Record<string, string> = {};
+  const targetMap: Record<string, string> = {};
 
   for (let digit = 0; digit <= 9; digit += 1) {
     actionMap[String(digit)] = "hangup";
@@ -106,12 +118,12 @@ const buildOptionMaps = (options) => {
   return { actionMap, targetMap };
 };
 
-const processContact = async (campaign, contact, options) => {
-  const activeSet = runningState.activeByCampaign.get(campaign.id) || new Set();
+const processContact = async (campaign: any, contact: any, options: any[]) => {
+  const activeSet = runningState.activeByCampaign.get(campaign.id) || new Set<number>();
   activeSet.add(contact.id);
   runningState.activeByCampaign.set(campaign.id, activeSet);
 
-  const line = await VoipLine.findByPk(campaign.voipLineId);
+  const line = await VoipLine.findByPk(campaign.voipLineId) as any;
 
   contact.status = "calling";
   contact.attempts += 1;
@@ -169,7 +181,7 @@ const processContact = async (campaign, contact, options) => {
         APP_TGT_9: targetMap["9"],
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     const nextStatus =
       contact.attempts < campaign.maxAttempts ? "pending" : "busy";
     await markContactResult({
@@ -186,7 +198,7 @@ const processContact = async (campaign, contact, options) => {
     (campaign.callTimeoutSeconds + campaign.digitTimeoutSeconds + 2) * 1000;
   await sleep(waitMs);
 
-  const freshContact = await UraReverseContact.findByPk(contact.id);
+  const freshContact = await UraReverseContact.findByPk(contact.id) as any;
   if (freshContact && freshContact.status === "calling") {
     const nextStatus =
       freshContact.attempts < campaign.maxAttempts ? "pending" : "no_answer";
@@ -202,8 +214,8 @@ const processContact = async (campaign, contact, options) => {
   activeSet.delete(contact.id);
 };
 
-const processCampaign = async (campaign) => {
-  const activeSet = runningState.activeByCampaign.get(campaign.id) || new Set();
+const processCampaign = async (campaign: any) => {
+  const activeSet = runningState.activeByCampaign.get(campaign.id) || new Set<number>();
   const availableSlots = Math.max(0, campaign.concurrentCalls - activeSet.size);
   if (availableSlots === 0) return;
 
@@ -239,7 +251,7 @@ const processCampaign = async (campaign) => {
     },
     order: [["updatedAt", "ASC"]],
     limit: availableSlots,
-  });
+  }) as any[];
 
   for (const contact of contacts) {
     if (!isPhoneValid(contact.phoneNumber)) {
@@ -273,13 +285,13 @@ const processCampaign = async (campaign) => {
 const tick = async () => {
   const campaigns = await UraReverseCampaign.findAll({
     where: { status: "running" },
-  });
+  }) as any[];
   for (const campaign of campaigns) {
     await processCampaign(campaign);
   }
 };
 
-const startUraReverseWorker = (io) => {
+export const startUraReverseWorker = (io: Server) => {
   runningState.io = io;
 
   if (runningState.timer) {
@@ -291,12 +303,18 @@ const startUraReverseWorker = (io) => {
   }, 1000);
 };
 
-const handleUraReverseDtmfEvent = async ({
+export const handleUraReverseDtmfEvent = async ({
   campaignId,
   contactId,
   selectedOption,
   result,
   recordingPath = null,
+}: {
+  campaignId: number;
+  contactId: number;
+  selectedOption: string | null;
+  result: string;
+  recordingPath?: string | null;
 }) => {
   const campaign = await UraReverseCampaign.findByPk(campaignId);
   if (!campaign) return;
@@ -318,10 +336,4 @@ const handleUraReverseDtmfEvent = async ({
     selectedOption,
     recordingPath,
   });
-};
-
-module.exports = {
-  startUraReverseWorker,
-  handleUraReverseDtmfEvent,
-  emitCampaignStats,
 };

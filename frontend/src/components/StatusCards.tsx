@@ -1,8 +1,20 @@
-import { Card, CardContent, Grid, Typography } from '@mui/material';
+import { Card, CardContent, Grid, Typography, FC } from "@mui/material";
+import type { StatusCounts } from "../types";
 
-const statuses = ['online', 'offline', 'paused', 'ringing', 'in_call', 'in_campaign'];
+const statuses: (keyof StatusCounts)[] = [
+  "online",
+  "offline",
+  "paused",
+  "ringing",
+  "in_call",
+  "in_campaign",
+];
 
-function StatusCards({ statusCounts }) {
+interface StatusCardsProps {
+  statusCounts: StatusCounts;
+}
+
+const StatusCards: FC<StatusCardsProps> = ({ statusCounts }) => {
   return (
     <Grid container spacing={2} sx={{ mb: 2 }}>
       {statuses.map((key) => (
@@ -19,6 +31,6 @@ function StatusCards({ statusCounts }) {
       ))}
     </Grid>
   );
-}
+};
 
 export default StatusCards;

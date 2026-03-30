@@ -1,11 +1,11 @@
-const { getAmiClient } = require("../ami");
-const { runCommand } = require("../ami");
-const { Extension } = require("../db");
+import { Server } from "socket.io";
+import { getAmiClient, runCommand } from "../ami";
+import { Extension } from "../db";
 
 let started = false;
-let extensionsCache = [];
+let extensionsCache: any[] = [];
 let cacheAt = 0;
-let pollInterval = null;
+let pollInterval: ReturnType<typeof setInterval> | null = null;
 
 const CACHE_TTL_MS = 10000;
 const POLL_INTERVAL_MS = 3000;
@@ -17,7 +17,7 @@ const loadExtensions = async () => {
 
   const extensions = await Extension.findAll({
     attributes: ["id", "number", "status"],
-  });
+  }) as any[];
 
   extensionsCache = extensions
     .map((ext) => ({ id: ext.id, number: ext.number, status: ext.status }))
@@ -26,7 +26,7 @@ const loadExtensions = async () => {
   return extensionsCache;
 };
 
-const extensionNumberFromChannel = (channel, extensionNumbers) => {
+const extensionNumberFromChannel = (channel: string, extensionNumbers: string[]) => {
   if (!channel || typeof channel !== "string" || !channel.startsWith("SIP/")) {
     return null;
   }
@@ -51,7 +51,7 @@ const extensionNumberFromChannel = (channel, extensionNumbers) => {
   return null;
 };
 
-const getEventChannels = (event) => {
+const getEventChannels = (event: any) => {
   const values = [
     event.Channel,
     event.DestChannel,
@@ -61,10 +61,10 @@ const getEventChannels = (event) => {
     event.Destination,
   ].filter(Boolean);
 
-  return [...new Set(values)];
+  return [...new Set(values)] as string[];
 };
 
-const normalizeCommandOutput = (response) => {
+const normalizeCommandOutput = (response: any) => {
   if (!response) return [];
 
   const output = response.Output ?? response.output;
@@ -87,8 +87,8 @@ const normalizeCommandOutput = (response) => {
     .map((line) => String(line || ""));
 };
 
-const parsePeersOnlineMap = (lines, extensionNumbersSet) => {
-  const map = new Map();
+const parsePeersOnlineMap = (lines: string[], extensionNumbersSet: Set<string>) => {
+  const map = new Map<string, boolean>();
 
   for (const line of lines) {
     const trimmed = String(line || "").trim();
@@ -115,8 +115,8 @@ const parsePeersOnlineMap = (lines, extensionNumbersSet) => {
   return map;
 };
 
-const parseCallStatusMap = (lines, extensionNumbers, extensionNumbersSet) => {
-  const map = new Map();
+const parseCallStatusMap = (lines: string[], extensionNumbers: string[], extensionNumbersSet: Set<string>) => {
+  const map = new Map<string, string>();
 
   for (const line of lines) {
     const trimmed = String(line || "").trim();
@@ -129,7 +129,7 @@ const parseCallStatusMap = (lines, extensionNumbers, extensionNumbersSet) => {
     const dialedExt = parts[2] || "";
     const channelState = String(parts[4] || "").toLowerCase();
 
-    const candidates = [];
+    const candidates: string[] = [];
     if (channel.startsWith("SIP/")) {
       const channelExtension = extensionNumberFromChannel(
         channel,
@@ -166,17 +166,17 @@ const parseCallStatusMap = (lines, extensionNumbers, extensionNumbersSet) => {
   return map;
 };
 
-const syncStatusesFromAsterisk = async (io) => {
+const syncStatusesFromAsterisk = async (io: Server) => {
   const extensions = await Extension.findAll({
     attributes: ["id", "number", "status"],
-  });
+  }) as any[];
 
   if (!extensions.length) {
     return;
   }
 
   const extensionNumbers = extensions.map((ext) => ext.number);
-  const extensionNumbersSet = new Set(extensionNumbers);
+  const extensionNumbersSet = new Set<string>(extensionNumbers);
 
   const [peersResponse, channelsResponse] = await Promise.allSettled([
     runCommand("sip show peers"),
@@ -225,7 +225,7 @@ const syncStatusesFromAsterisk = async (io) => {
   }
 };
 
-const startAsteriskStatusPolling = (io) => {
+const startAsteriskStatusPolling = (io: Server) => {
   if (pollInterval) {
     return;
   }
@@ -233,7 +233,7 @@ const startAsteriskStatusPolling = (io) => {
   const runSync = async () => {
     try {
       await syncStatusesFromAsterisk(io);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro no polling de status do Asterisk:", error.message);
     }
   };
@@ -242,7 +242,7 @@ const startAsteriskStatusPolling = (io) => {
   pollInterval = setInterval(runSync, POLL_INTERVAL_MS);
 };
 
-const updateStatusForChannels = async (channels, nextStatus, io) => {
+const updateStatusForChannels = async (channels: string[], nextStatus: string, io: Server) => {
   const extensions = await loadExtensions();
   const extensionNumbers = extensions.map((ext) => ext.number);
 
@@ -252,14 +252,14 @@ const updateStatusForChannels = async (channels, nextStatus, io) => {
         .map((channel) => extensionNumberFromChannel(channel, extensionNumbers))
         .filter(Boolean),
     ),
-  ];
+  ] as string[];
 
   if (!affectedNumbers.length) {
     return;
   }
 
   for (const number of affectedNumbers) {
-    const extension = await Extension.findOne({ where: { number } });
+    const extension = await Extension.findOne({ where: { number } }) as any;
     if (!extension) {
       continue;
     }
@@ -284,7 +284,7 @@ const updateStatusForChannels = async (channels, nextStatus, io) => {
   io.emit("dashboard:update");
 };
 
-const startAmiStatusMonitor = (io) => {
+export const startAmiStatusMonitor = (io: Server) => {
   if (started) {
     return;
   }
@@ -292,7 +292,7 @@ const startAmiStatusMonitor = (io) => {
   started = true;
   const client = getAmiClient();
 
-  client.on("managerevent", async (event) => {
+  client.on("managerevent", async (event: any) => {
     try {
       const eventName = String(event.Event || "").toLowerCase();
       const channels = getEventChannels(event);
@@ -322,12 +322,10 @@ const startAmiStatusMonitor = (io) => {
       if (eventName === "hangup" || eventName === "bridgeleave") {
         await updateStatusForChannels(channels, "online", io);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao processar evento AMI:", error.message);
     }
   });
 
   startAsteriskStatusPolling(io);
 };
-
-module.exports = { startAmiStatusMonitor };

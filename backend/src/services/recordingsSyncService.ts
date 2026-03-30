@@ -1,15 +1,17 @@
-const fs = require("fs/promises");
-const path = require("path");
-const { asteriskRecordingsDir } = require("../config");
-const { CallRecording } = require("../db");
+import fs from "fs/promises";
+import path from "path";
+import config from "../config";
+import { CallRecording } from "../db";
+
+const { asteriskRecordingsDir } = config;
 
 const POLL_INTERVAL_MS = 10000;
-let intervalId = null;
+let intervalId: ReturnType<typeof setInterval> | null = null;
 
-const isWavFile = (name) => name.toLowerCase().endsWith(".wav");
+const isWavFile = (name: string) => name.toLowerCase().endsWith(".wav");
 
-const collectWavFiles = async (dirPath) => {
-  let entries = [];
+const collectWavFiles = async (dirPath: string): Promise<string[]> => {
+  let entries: any[] = [];
   try {
     entries = await fs.readdir(dirPath, { withFileTypes: true });
   } catch {
@@ -32,7 +34,7 @@ const collectWavFiles = async (dirPath) => {
   return files.flat();
 };
 
-const getUniqueIdFromFilename = (filePath) => {
+const getUniqueIdFromFilename = (filePath: string) => {
   const base = path.basename(filePath, path.extname(filePath));
   const parts = base.split("-");
   return parts.length >= 2 ? parts[1] : null;
@@ -46,7 +48,7 @@ const syncRecordingsFromDisk = async () => {
 
   const existing = await CallRecording.findAll({
     attributes: ["filePath"],
-  });
+  }) as any[];
   const existingSet = new Set(existing.map((item) => item.filePath));
 
   for (const filePath of wavFiles) {
@@ -71,7 +73,7 @@ const syncRecordingsFromDisk = async () => {
   }
 };
 
-const startRecordingsSyncService = () => {
+export const startRecordingsSyncService = () => {
   if (intervalId) {
     return;
   }
@@ -79,7 +81,7 @@ const startRecordingsSyncService = () => {
   const runSync = async () => {
     try {
       await syncRecordingsFromDisk();
-    } catch (error) {
+    } catch (error: any) {
       console.error("Erro ao sincronizar gravações:", error.message);
     }
   };
@@ -87,5 +89,3 @@ const startRecordingsSyncService = () => {
   runSync();
   intervalId = setInterval(runSync, POLL_INTERVAL_MS);
 };
-
-module.exports = { startRecordingsSyncService };

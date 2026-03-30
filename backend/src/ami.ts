@@ -1,13 +1,12 @@
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const AsteriskManager = require("asterisk-manager");
-const {
-  ami: amiConfig,
-  backendInternalUrl,
-  internalApiKey,
-} = require("./config");
+import config from "./config";
 
-let amiClient = null;
+const { ami: amiConfig, backendInternalUrl, internalApiKey } = config;
 
-const getAmiClient = () => {
+let amiClient: any = null;
+
+export const getAmiClient = () => {
   if (amiClient) {
     return amiClient;
   }
@@ -24,10 +23,10 @@ const getAmiClient = () => {
   return amiClient;
 };
 
-const originateCall = (
-  phoneNumber,
+export const originateCall = (
+  phoneNumber: string,
   extensionNumber = "1000",
-  voipLineName = null,
+  voipLineName: string | null = null,
 ) => {
   const client = getAmiClient();
   const channel = voipLineName
@@ -45,7 +44,7 @@ const originateCall = (
         CallerID: extensionNumber,
         Async: true,
       },
-      (err, response) => {
+      (err: any, response: any) => {
         if (err) return reject(err);
         return resolve(response);
       },
@@ -53,7 +52,7 @@ const originateCall = (
   });
 };
 
-const runCommand = (command) => {
+export const runCommand = (command: string) => {
   const client = getAmiClient();
 
   return new Promise((resolve, reject) => {
@@ -62,7 +61,7 @@ const runCommand = (command) => {
         Action: "Command",
         Command: command,
       },
-      (err, response) => {
+      (err: any, response: any) => {
         if (err) return reject(err);
         return resolve(response);
       },
@@ -70,7 +69,7 @@ const runCommand = (command) => {
   });
 };
 
-const originateReverseIvr = ({
+export const originateReverseIvr = ({
   phoneNumber,
   voipLineName = null,
   campaignId = null,
@@ -85,6 +84,21 @@ const originateReverseIvr = ({
   digitTimeoutSeconds = 5,
   extraVariables = {},
   uraRef,
+}: {
+  phoneNumber: string;
+  voipLineName?: string | null;
+  campaignId?: string | number | null;
+  extensionId?: string | number | null;
+  targetExtension?: string;
+  option1TargetExtension?: string | null;
+  option2TargetExtension?: string | null;
+  option3TargetExtension?: string | null;
+  promptAudio?: string;
+  channelTechnology?: string;
+  timeoutMs?: number;
+  digitTimeoutSeconds?: number;
+  extraVariables?: Record<string, any>;
+  uraRef: string;
 }) => {
   const client = getAmiClient();
   const tech = String(channelTechnology || "SIP").toUpperCase();
@@ -126,17 +140,10 @@ const originateReverseIvr = ({
         Timeout: Number(timeoutMs) || 30000,
         Variable: vars,
       },
-      (err, response) => {
+      (err: any, response: any) => {
         if (err) return reject(err);
         return resolve(response);
       },
     );
   });
-};
-
-module.exports = {
-  getAmiClient,
-  originateCall,
-  originateReverseIvr,
-  runCommand,
 };

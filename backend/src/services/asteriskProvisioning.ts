@@ -1,12 +1,14 @@
-const fs = require("fs/promises");
-const { asteriskSipCustomFile } = require("../config");
-const { runCommand } = require("../ami");
+import fs from "fs/promises";
+import config from "../config";
+import { runCommand } from "../ami";
+
+const { asteriskSipCustomFile } = config;
 
 const buildExtensionBlock = (
-  number,
-  secret,
+  number: string,
+  secret: string,
   context = "default",
-  voipLineName = null,
+  voipLineName: string | null = null,
 ) => {
   const setvarLine = voipLineName ? `setvar=VOIPLINE=${voipLineName}\n` : "";
   return `\n[${number}]\ntype=friend\nhost=dynamic\nsecret=${secret}\ncontext=${context}\n${setvarLine}disallow=all\nallow=ulaw\nallow=alaw\ndtmfmode=rfc2833\nnat=force_rport,comedia\ndirectmedia=no\nqualify=yes\nqualifyfreq=30\n\n`;
@@ -19,6 +21,13 @@ const buildSipVoipLineBlock = ({
   host,
   port = 5060,
   context = "default",
+}: {
+  name: string;
+  username: string;
+  secret: string;
+  host: string;
+  port?: number;
+  context?: string;
 }) => `
 [${name}]
 type=peer
@@ -35,7 +44,7 @@ insecure=invite,port
 qualify=yes
 `;
 
-const ensureFile = async (filePath) => {
+const ensureFile = async (filePath: string) => {
   try {
     await fs.access(filePath);
   } catch {
@@ -43,13 +52,18 @@ const ensureFile = async (filePath) => {
   }
 };
 
-const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const upsertNamedBlock = async ({
   filePath,
   sectionName,
   blockContent,
   scope,
+}: {
+  filePath: string;
+  sectionName: string;
+  blockContent: string;
+  scope: string;
 }) => {
   await ensureFile(filePath);
   const content = await fs.readFile(filePath, "utf-8");
@@ -70,7 +84,11 @@ const upsertNamedBlock = async ({
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
 };
 
-const removeNamedBlock = async ({ filePath, sectionName, scope }) => {
+const removeNamedBlock = async ({ filePath, sectionName, scope }: {
+  filePath: string;
+  sectionName: string;
+  scope: string;
+}) => {
   await ensureFile(filePath);
   const content = await fs.readFile(filePath, "utf-8");
 
@@ -86,11 +104,16 @@ const removeNamedBlock = async ({ filePath, sectionName, scope }) => {
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
 };
 
-const upsertSipExtension = async ({
+export const upsertSipExtension = async ({
   number,
   secret = "1234",
   context = "default",
   voipLineName = null,
+}: {
+  number: string;
+  secret?: string;
+  context?: string;
+  voipLineName?: string | null;
 }) => {
   const numberText = String(number).trim();
   if (!numberText) {
@@ -114,13 +137,20 @@ const upsertSipExtension = async ({
   } catch {}
 };
 
-const upsertSipVoipLine = async ({
+export const upsertSipVoipLine = async ({
   name,
   username,
   secret,
   host,
   port = 5060,
   context = "default",
+}: {
+  name: string;
+  username: string;
+  secret: string;
+  host: string;
+  port?: number;
+  context?: string;
 }) => {
   const lineName = String(name || "").trim();
   if (!lineName) {
@@ -150,7 +180,7 @@ const upsertSipVoipLine = async ({
   } catch {}
 };
 
-const removeExtensionProvision = async ({ number }) => {
+export const removeExtensionProvision = async ({ number }: { number: string }) => {
   const numberText = String(number).trim();
   if (!numberText) {
     return;
@@ -167,7 +197,7 @@ const removeExtensionProvision = async ({ number }) => {
   } catch {}
 };
 
-const removeVoipLineProvision = async ({ name }) => {
+export const removeVoipLineProvision = async ({ name }: { name: string }) => {
   const lineName = String(name || "").trim();
   if (!lineName) {
     return;
@@ -182,11 +212,4 @@ const removeVoipLineProvision = async ({ name }) => {
   try {
     await runCommand("sip reload");
   } catch {}
-};
-
-module.exports = {
-  upsertSipExtension,
-  upsertSipVoipLine,
-  removeExtensionProvision,
-  removeVoipLineProvision,
 };

@@ -1,16 +1,17 @@
-const {
+import { Server } from "socket.io";
+import {
   Campaign,
   CampaignContact,
   CallLog,
   UraLog,
   Extension,
   VoipLine,
-} = require("../db");
-const { originateCall } = require("../ami");
+} from "../db";
+import { originateCall } from "../ami";
 
-const runningCampaigns = new Set();
+const runningCampaigns = new Set<number>();
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const randomResult = () => {
   const options = [
@@ -22,7 +23,7 @@ const randomResult = () => {
   return options[Math.floor(Math.random() * options.length)];
 };
 
-const runCampaign = async (campaignId, io) => {
+export const runCampaign = async (campaignId: number, io: Server) => {
   if (runningCampaigns.has(campaignId)) {
     return;
   }
@@ -36,7 +37,7 @@ const runCampaign = async (campaignId, io) => {
         { model: Extension, as: "extensions" },
         { model: VoipLine, as: "voipLines" },
       ],
-    });
+    }) as any;
 
     if (!campaign) {
       return;
@@ -47,7 +48,7 @@ const runCampaign = async (campaignId, io) => {
 
     if (campaign.extensions.length) {
       await Promise.all(
-        campaign.extensions.map((ext) => ext.update({ status: "in_campaign" })),
+        campaign.extensions.map((ext: any) => ext.update({ status: "in_campaign" })),
       );
     }
     io.emit("dashboard:update");
@@ -117,7 +118,7 @@ const runCampaign = async (campaignId, io) => {
 
     if (campaign.extensions.length) {
       await Promise.all(
-        campaign.extensions.map((ext) => ext.update({ status: "online" })),
+        campaign.extensions.map((ext: any) => ext.update({ status: "online" })),
       );
     }
 
@@ -126,5 +127,3 @@ const runCampaign = async (campaignId, io) => {
     runningCampaigns.delete(campaignId);
   }
 };
-
-module.exports = { runCampaign };
