@@ -130,9 +130,10 @@ export const PbxProvider: FC<PbxProviderProps> = ({
 
   const createExtension = async (
     payload: CreateExtensionPayload,
-  ): Promise<void> => {
-    await api.post("/extensions", payload);
+  ): Promise<{ sipPassword?: string; warning?: string; detail?: string }> => {
+    const res = await api.post("/extensions", payload);
     await fetchAll();
+    return res.data;
   };
 
   const updateExtension = async (

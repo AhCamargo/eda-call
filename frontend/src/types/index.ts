@@ -121,7 +121,9 @@ export interface IPbxContextValue {
   reportUraLogs: UraLog[];
   reportRecordings: Recording[];
   fetchAll: () => Promise<void>;
-  createExtension: (payload: CreateExtensionPayload) => Promise<void>;
+  createExtension: (
+    payload: CreateExtensionPayload,
+  ) => Promise<{ sipPassword?: string; warning?: string; detail?: string }>;
   updateExtension: (
     id: string,
     payload: Partial<CreateExtensionPayload>,

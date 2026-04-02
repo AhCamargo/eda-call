@@ -1,44 +1,92 @@
-import { useState, useMemo } from 'react';
-import { usePbx } from '../context/PbxContext';
+import { useState, useMemo } from "react";
+import { usePbx } from "../context/PbxContext";
+import type { Extension, CreateExtensionPayload } from "../types";
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
-} from '@/components/ui/dialog';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
-} from '@/components/ui/table';
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import {
-  Plus, Pencil, Trash2, RefreshCw, Eye, EyeOff, Copy, Phone,
-  CheckCircle2, AlertCircle, SlidersHorizontal, Info
-} from 'lucide-react';
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  Eye,
+  EyeOff,
+  Copy,
+  Phone,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+} from "lucide-react";
 
 const STATUS_DOT = {
-  online:      'bg-emerald-500',
-  offline:     'bg-zinc-500',
-  paused:      'bg-amber-500',
-  ringing:     'bg-blue-400 animate-pulse',
-  in_call:     'bg-green-400 animate-pulse',
-  in_campaign: 'bg-purple-400',
+  online: "bg-emerald-500",
+  offline: "bg-zinc-500",
+  paused: "bg-amber-500",
+  ringing: "bg-blue-400 animate-pulse",
+  in_call: "bg-green-400 animate-pulse",
+  in_campaign: "bg-purple-400",
 };
 
 const STATUS_LABEL = {
-  online: 'Online', offline: 'Offline', paused: 'Pausa',
-  ringing: 'Tocando', in_call: 'Em ligação', in_campaign: 'Em campanha',
+  online: "Online",
+  offline: "Offline",
+  paused: "Pausa",
+  ringing: "Tocando",
+  in_call: "Em ligação",
+  in_campaign: "Em campanha",
 };
 
-const EMPTY_FORM = { number: '', name: '', sipPassword: '', voipLineId: '' };
+const EMPTY_FORM = { number: "", name: "", sipPassword: "", voipLineId: "" };
 
-function InputField({ label, value, onChange, placeholder, type = 'text', required, helper }) {
+function InputField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+  required,
+  helper,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
+  required?: boolean;
+  helper?: string;
+}) {
   return (
     <div className="space-y-1.5">
       <label className="text-sm font-medium text-zinc-300">
@@ -77,21 +125,27 @@ export default function Ramais() {
   // Forms
   const [createForm, setCreateForm] = useState(EMPTY_FORM);
   const [editForm, setEditForm] = useState(EMPTY_FORM);
-  const [editTarget, setEditTarget] = useState(null);
-  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [editTarget, setEditTarget] = useState<Extension | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Extension | null>(null);
 
   // Test call
-  const [sourceId, setSourceId] = useState('');
-  const [destId, setDestId] = useState('');
-  const [testFeedback, setTestFeedback] = useState(null);
+  const [sourceId, setSourceId] = useState("");
+  const [destId, setDestId] = useState("");
+  const [testFeedback, setTestFeedback] = useState<{
+    msg: string;
+    type: string;
+  } | null>(null);
 
   // UI states
-  const [revealedId, setRevealedId] = useState(null);
-  const [feedback, setFeedback] = useState(null);
+  const [revealedId, setRevealedId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{
+    msg: string;
+    type: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
-  const [reprovisioningId, setReprovisioningId] = useState(null);
+  const [reprovisioningId, setReprovisioningId] = useState<string | null>(null);
 
-  const showFeedback = (msg, type = 'ok') => {
+  const showFeedback = (msg: string, type = "ok") => {
     setFeedback({ msg, type });
     setTimeout(() => setFeedback(null), 4000);
   };
@@ -101,12 +155,22 @@ export default function Ramais() {
     e.preventDefault();
     setLoading(true);
     try {
-      await createExtension(createForm);
+      const result = await createExtension(createForm);
       setCreateForm(EMPTY_FORM);
       setCreateOpen(false);
-      showFeedback('Ramal criado com sucesso.');
+      if (result?.warning) {
+        showFeedback(
+          `Ramal salvo, mas falhou no Asterisk: ${result.detail || result.warning}`,
+          "error",
+        );
+      } else {
+        showFeedback("Ramal criado com sucesso.");
+      }
     } catch (err) {
-      showFeedback(err?.response?.data?.message || 'Erro ao criar ramal.', 'error');
+      showFeedback(
+        err?.response?.data?.message || "Erro ao criar ramal.",
+        "error",
+      );
     } finally {
       setLoading(false);
     }
@@ -118,8 +182,8 @@ export default function Ramais() {
     setEditForm({
       number: ext.number,
       name: ext.name,
-      sipPassword: '',
-      voipLineId: ext.voipLineId ? String(ext.voipLineId) : '',
+      sipPassword: "",
+      voipLineId: ext.voipLineId ? String(ext.voipLineId) : "",
     });
     setEditOpen(true);
   };
@@ -128,29 +192,41 @@ export default function Ramais() {
     e.preventDefault();
     setLoading(true);
     try {
-      const payload = { number: editForm.number, name: editForm.name, voipLineId: editForm.voipLineId ? Number(editForm.voipLineId) : null };
+      if (!editTarget) return;
+      const payload: Partial<CreateExtensionPayload> = {
+        number: editForm.number,
+        name: editForm.name,
+        voipLineId: editForm.voipLineId || undefined,
+      };
       if (editForm.sipPassword) payload.sipPassword = editForm.sipPassword;
       await updateExtension(editTarget.id, payload);
       setEditOpen(false);
-      showFeedback('Ramal atualizado.');
+      showFeedback("Ramal atualizado.");
     } catch (err) {
-      showFeedback(err?.response?.data?.message || 'Erro ao editar ramal.', 'error');
+      showFeedback(
+        err?.response?.data?.message || "Erro ao editar ramal.",
+        "error",
+      );
     } finally {
       setLoading(false);
     }
   };
 
   // ── Delete ────────────────────────────────────────────────────────────────
-  const openDelete = (ext) => { setDeleteTarget(ext); setDeleteOpen(true); };
+  const openDelete = (ext) => {
+    setDeleteTarget(ext);
+    setDeleteOpen(true);
+  };
 
   const handleDelete = async () => {
+    if (!deleteTarget) return;
     setLoading(true);
     try {
       await deleteExtension(deleteTarget.id);
       setDeleteOpen(false);
       showFeedback(`Ramal ${deleteTarget.number} excluído.`);
     } catch {
-      showFeedback('Erro ao excluir ramal.', 'error');
+      showFeedback("Erro ao excluir ramal.", "error");
     } finally {
       setLoading(false);
     }
@@ -163,7 +239,7 @@ export default function Ramais() {
       await reprovisionExtension(ext.id);
       showFeedback(`Ramal ${ext.number} reprovisionado.`);
     } catch {
-      showFeedback('Erro ao reprovisionar.', 'error');
+      showFeedback("Erro ao reprovisionar.", "error");
     } finally {
       setReprovisioningId(null);
     }
@@ -171,14 +247,26 @@ export default function Ramais() {
 
   // ── Test Call ─────────────────────────────────────────────────────────────
   const handleTestCall = async () => {
-    if (!sourceId || !destId) { setTestFeedback({ msg: 'Selecione origem e destino.', type: 'error' }); return; }
-    if (sourceId === destId) { setTestFeedback({ msg: 'Origem e destino precisam ser diferentes.', type: 'error' }); return; }
+    if (!sourceId || !destId) {
+      setTestFeedback({ msg: "Selecione origem e destino.", type: "error" });
+      return;
+    }
+    if (sourceId === destId) {
+      setTestFeedback({
+        msg: "Origem e destino precisam ser diferentes.",
+        type: "error",
+      });
+      return;
+    }
     setLoading(true);
     try {
-      const res = await testCallBetweenExtensions(Number(sourceId), Number(destId));
-      setTestFeedback({ msg: res.message || 'Ligação de teste iniciada.', type: 'ok' });
+      const res = await testCallBetweenExtensions(sourceId, destId);
+      setTestFeedback({
+        msg: (res.message as string) || "Ligação de teste iniciada.",
+        type: "ok",
+      });
     } catch {
-      setTestFeedback({ msg: 'Erro ao iniciar teste.', type: 'error' });
+      setTestFeedback({ msg: "Erro ao iniciar teste.", type: "error" });
     } finally {
       setLoading(false);
     }
@@ -186,17 +274,20 @@ export default function Ramais() {
 
   const copyPassword = (pwd) => {
     navigator.clipboard.writeText(pwd).then(
-      () => showFeedback('Senha copiada.'),
-      () => showFeedback('Não foi possível copiar.', 'error')
+      () => showFeedback("Senha copiada."),
+      () => showFeedback("Não foi possível copiar.", "error"),
     );
   };
 
-  const sortedExtensions = useMemo(() =>
-    [...extensions].sort((a, b) => String(a.number).localeCompare(String(b.number))),
-    [extensions]
+  const sortedExtensions = useMemo(
+    () =>
+      [...extensions].sort((a, b) =>
+        String(a.number).localeCompare(String(b.number)),
+      ),
+    [extensions],
   );
 
-  const voipLineName = (id) => voipLines.find((l) => l.id === id)?.name || '—';
+  const voipLineName = (id) => voipLines.find((l) => l.id === id)?.name || "—";
 
   return (
     <div className="space-y-4 text-zinc-100 max-w-6xl">
@@ -208,7 +299,10 @@ export default function Ramais() {
             variant="outline"
             size="sm"
             className="gap-2 border-zinc-700 text-zinc-300 hover:text-blue-400 hover:border-blue-500/40"
-            onClick={() => { setTestFeedback(null); setTestOpen(true); }}
+            onClick={() => {
+              setTestFeedback(null);
+              setTestOpen(true);
+            }}
           >
             <Phone size={14} />
             Teste de ligação
@@ -216,7 +310,10 @@ export default function Ramais() {
           <Button
             size="sm"
             className="gap-2 bg-violet-600 hover:bg-violet-700 text-white"
-            onClick={() => { setCreateForm(EMPTY_FORM); setCreateOpen(true); }}
+            onClick={() => {
+              setCreateForm(EMPTY_FORM);
+              setCreateOpen(true);
+            }}
           >
             <Plus size={14} />
             Novo ramal
@@ -226,12 +323,19 @@ export default function Ramais() {
 
       {/* Feedback */}
       {feedback && (
-        <Alert className={`border ${feedback.type === 'error' ? 'border-red-500/40 bg-red-500/10' : 'border-green-500/40 bg-green-500/10'}`}>
-          {feedback.type === 'error'
-            ? <AlertCircle size={15} className="text-red-400" />
-            : <CheckCircle2 size={15} className="text-green-400" />
-          }
-          <AlertDescription className={feedback.type === 'error' ? 'text-red-300' : 'text-green-300'}>
+        <Alert
+          className={`border ${feedback.type === "error" ? "border-red-500/40 bg-red-500/10" : "border-green-500/40 bg-green-500/10"}`}
+        >
+          {feedback.type === "error" ? (
+            <AlertCircle size={15} className="text-red-400" />
+          ) : (
+            <CheckCircle2 size={15} className="text-green-400" />
+          )}
+          <AlertDescription
+            className={
+              feedback.type === "error" ? "text-red-300" : "text-green-300"
+            }
+          >
             {feedback.msg}
           </AlertDescription>
         </Alert>
@@ -241,7 +345,9 @@ export default function Ramais() {
       <Card className="bg-zinc-900 border-zinc-800">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
           <CardTitle className="text-sm font-medium text-zinc-300">
-            {sortedExtensions.length} ramal{sortedExtensions.length !== 1 ? 'is' : ''} cadastrado{sortedExtensions.length !== 1 ? 's' : ''}
+            {sortedExtensions.length} ramal
+            {sortedExtensions.length !== 1 ? "is" : ""} cadastrado
+            {sortedExtensions.length !== 1 ? "s" : ""}
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
@@ -254,53 +360,86 @@ export default function Ramais() {
                 <TableHead className="text-zinc-400">Linha VoIP</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
                 <TableHead className="text-zinc-400">Senha SIP</TableHead>
-                <TableHead className="text-zinc-400 text-right">Ações</TableHead>
+                <TableHead className="text-zinc-400 text-right">
+                  Ações
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedExtensions.length === 0 && (
                 <TableRow className="border-zinc-800">
-                  <TableCell colSpan={7} className="text-center text-zinc-500 py-10">
-                    Nenhum ramal cadastrado. Clique em "Novo ramal" para começar.
+                  <TableCell
+                    colSpan={7}
+                    className="text-center text-zinc-500 py-10"
+                  >
+                    Nenhum ramal cadastrado. Clique em "Novo ramal" para
+                    começar.
                   </TableCell>
                 </TableRow>
               )}
               {sortedExtensions.map((ext) => (
-                <TableRow key={ext.id} className="border-zinc-800 hover:bg-zinc-800/40 transition-colors">
+                <TableRow
+                  key={ext.id}
+                  className="border-zinc-800 hover:bg-zinc-800/40 transition-colors"
+                >
                   <TableCell>
-                    <span className={`w-2 h-2 rounded-full inline-block ${STATUS_DOT[ext.status] || 'bg-zinc-500'}`} />
+                    <span
+                      className={`w-2 h-2 rounded-full inline-block ${(STATUS_DOT as Record<string, string>)[ext.status ?? ""] || "bg-zinc-500"}`}
+                    />
                   </TableCell>
-                  <TableCell className="font-mono font-semibold text-zinc-200">{ext.number}</TableCell>
+                  <TableCell className="font-mono font-semibold text-zinc-200">
+                    {ext.number}
+                  </TableCell>
                   <TableCell className="text-zinc-300">{ext.name}</TableCell>
                   <TableCell className="text-zinc-400 text-sm">
-                    {ext.voipLineId ? voipLineName(ext.voipLineId) : <span className="text-zinc-600">—</span>}
+                    {ext.voipLineId ? (
+                      voipLineName(ext.voipLineId)
+                    ) : (
+                      <span className="text-zinc-600">—</span>
+                    )}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className="text-xs text-zinc-400 border-zinc-700">
-                      {STATUS_LABEL[ext.status] || ext.status}
+                    <Badge
+                      variant="outline"
+                      className="text-xs text-zinc-400 border-zinc-700"
+                    >
+                      {(STATUS_LABEL as Record<string, string>)[
+                        ext.status ?? ""
+                      ] || ext.status}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs text-zinc-400">
-                        {revealedId === ext.id ? ext.password : '••••••••'}
+                        {revealedId === ext.id ? ext.sipPassword : "••••••••"}
                       </span>
                       <TooltipProvider delayDuration={200}>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={() => setRevealedId((p) => p === ext.id ? null : ext.id)}
+                              onClick={() =>
+                                setRevealedId((p) =>
+                                  p === ext.id ? null : ext.id,
+                                )
+                              }
                               className="text-zinc-500 hover:text-zinc-300 transition-colors p-0.5"
                             >
-                              {revealedId === ext.id ? <EyeOff size={13} /> : <Eye size={13} />}
+                              {revealedId === ext.id ? (
+                                <EyeOff size={13} />
+                              ) : (
+                                <Eye size={13} />
+                              )}
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent>{revealedId === ext.id ? 'Ocultar' : 'Mostrar'} senha</TooltipContent>
+                          <TooltipContent>
+                            {revealedId === ext.id ? "Ocultar" : "Mostrar"}{" "}
+                            senha
+                          </TooltipContent>
                         </Tooltip>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
-                              onClick={() => copyPassword(ext.password)}
+                              onClick={() => copyPassword(ext.sipPassword)}
                               className="text-zinc-500 hover:text-zinc-300 transition-colors p-0.5"
                             >
                               <Copy size={13} />
@@ -323,10 +462,19 @@ export default function Ramais() {
                               onClick={() => handleReprovision(ext)}
                               disabled={reprovisioningId === ext.id}
                             >
-                              <RefreshCw size={13} className={reprovisioningId === ext.id ? 'animate-spin' : ''} />
+                              <RefreshCw
+                                size={13}
+                                className={
+                                  reprovisioningId === ext.id
+                                    ? "animate-spin"
+                                    : ""
+                                }
+                              />
                             </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Reprovisionar no Asterisk</TooltipContent>
+                          <TooltipContent>
+                            Reprovisionar no Asterisk
+                          </TooltipContent>
                         </Tooltip>
 
                         <Tooltip>
@@ -368,69 +516,97 @@ export default function Ramais() {
 
       {/* ── Dialog: Criar Ramal ────────────────────────────────────────────── */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100 sm:max-w-md">
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100 sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Plus size={18} className="text-violet-400" />
               Novo ramal
             </DialogTitle>
             <DialogDescription className="text-zinc-500">
-              Preencha os dados. A senha SIP é gerada automaticamente se não informada.
+              Preencha os dados. A senha SIP é gerada automaticamente se não
+              informada.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleCreate} className="space-y-3 py-1">
-            <InputField
-              label="Número"
-              value={createForm.number}
-              onChange={(v) => setCreateForm((p) => ({ ...p, number: v }))}
-              placeholder="ex: 2001 ou C1-1000"
-              required
-            />
-            <InputField
-              label="Nome"
-              value={createForm.name}
-              onChange={(v) => setCreateForm((p) => ({ ...p, name: v }))}
-              placeholder="ex: João Silva"
-              required
-            />
-            <InputField
-              label="Senha SIP"
-              value={createForm.sipPassword}
-              onChange={(v) => setCreateForm((p) => ({ ...p, sipPassword: v }))}
-              placeholder="deixe em branco para gerar automaticamente"
-              helper="Mínimo 6 caracteres. Se vazio, o sistema gera uma senha segura."
-            />
-
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-300">Linha VoIP (outbound)</label>
-              <Select
-                value={createForm.voipLineId}
-                onValueChange={(v) => setCreateForm((p) => ({ ...p, voipLineId: v }))}
-              >
-                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
-                  <SelectValue placeholder="Nenhuma (somente chamadas internas)" />
-                </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
-                  <SelectItem value="" className="text-zinc-400 focus:bg-zinc-700">— Nenhuma —</SelectItem>
-                  {voipLines.map((line) => (
-                    <SelectItem key={line.id} value={String(line.id)} className="text-zinc-100 focus:bg-zinc-700">
-                      {line.name} — {line.host}:{line.port}
+          <form onSubmit={handleCreate}>
+            <div className="grid grid-cols-2 gap-3 py-2">
+              <InputField
+                label="Número"
+                value={createForm.number}
+                onChange={(v) => setCreateForm((p) => ({ ...p, number: v }))}
+                placeholder="ex: 2001 ou C1-1000"
+                required
+              />
+              <InputField
+                label="Nome"
+                value={createForm.name}
+                onChange={(v) => setCreateForm((p) => ({ ...p, name: v }))}
+                placeholder="ex: João Silva"
+                required
+              />
+              <InputField
+                label="Senha SIP"
+                value={createForm.sipPassword}
+                onChange={(v) =>
+                  setCreateForm((p) => ({ ...p, sipPassword: v }))
+                }
+                placeholder="deixe em branco para gerar"
+                helper="Se vazio, o sistema gera uma senha segura."
+              />
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium text-zinc-300">
+                  Linha VoIP (outbound)
+                </label>
+                <Select
+                  value={createForm.voipLineId || "__none__"}
+                  onValueChange={(v) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      voipLineId: v === "__none__" ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
+                    <SelectValue placeholder="Nenhuma" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                    <SelectItem
+                      value="__none__"
+                      className="text-zinc-400 focus:bg-zinc-700"
+                    >
+                      — Nenhuma —
                     </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {voipLines.length === 0 && (
-                <p className="text-xs text-amber-400 flex items-center gap-1">
-                  <Info size={11} /> Cadastre linhas VoIP em "Linhas VoIP" para habilitar chamadas outbound.
-                </p>
-              )}
+                    {voipLines.map((line) => (
+                      <SelectItem
+                        key={line.id}
+                        value={String(line.id)}
+                        className="text-zinc-100 focus:bg-zinc-700"
+                      >
+                        {line.name} — {line.host}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {voipLines.length === 0 && (
+                  <p className="text-xs text-amber-400 flex items-center gap-1">
+                    <Info size={11} /> Sem linhas VoIP cadastradas.
+                  </p>
+                )}
+              </div>
             </div>
-
-            <DialogFooter className="pt-2 gap-2">
-              <Button type="button" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setCreateOpen(false)}>
+            <DialogFooter className="pt-4 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="border-zinc-700 text-zinc-400"
+                onClick={() => setCreateOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading} className="bg-violet-600 hover:bg-violet-700 text-white gap-2">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="bg-violet-600 hover:bg-violet-700 text-white gap-2"
+              >
                 {loading && <RefreshCw size={13} className="animate-spin" />}
                 Criar ramal
               </Button>
@@ -469,18 +645,34 @@ export default function Ramais() {
               helper="Preencha apenas se quiser alterar a senha."
             />
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-300">Linha VoIP (outbound)</label>
+              <label className="text-sm font-medium text-zinc-300">
+                Linha VoIP (outbound)
+              </label>
               <Select
-                value={editForm.voipLineId}
-                onValueChange={(v) => setEditForm((p) => ({ ...p, voipLineId: v }))}
+                value={editForm.voipLineId || "__none__"}
+                onValueChange={(v) =>
+                  setEditForm((p) => ({
+                    ...p,
+                    voipLineId: v === "__none__" ? "" : v,
+                  }))
+                }
               >
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
                   <SelectValue placeholder="Nenhuma" />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
-                  <SelectItem value="" className="text-zinc-400 focus:bg-zinc-700">— Nenhuma —</SelectItem>
+                  <SelectItem
+                    value="__none__"
+                    className="text-zinc-400 focus:bg-zinc-700"
+                  >
+                    — Nenhuma —
+                  </SelectItem>
                   {voipLines.map((line) => (
-                    <SelectItem key={line.id} value={String(line.id)} className="text-zinc-100 focus:bg-zinc-700">
+                    <SelectItem
+                      key={line.id}
+                      value={String(line.id)}
+                      className="text-zinc-100 focus:bg-zinc-700"
+                    >
                       {line.name} — {line.host}:{line.port}
                     </SelectItem>
                   ))}
@@ -488,10 +680,19 @@ export default function Ramais() {
               </Select>
             </div>
             <DialogFooter className="pt-2 gap-2">
-              <Button type="button" variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setEditOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="border-zinc-700 text-zinc-400"
+                onClick={() => setEditOpen(false)}
+              >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading} className="bg-amber-600 hover:bg-amber-700 text-white gap-2">
+              <Button
+                type="submit"
+                disabled={loading}
+                className="bg-amber-600 hover:bg-amber-700 text-white gap-2"
+              >
                 {loading && <RefreshCw size={13} className="animate-spin" />}
                 Salvar alterações
               </Button>
@@ -517,10 +718,19 @@ export default function Ramais() {
             <p className="text-sm text-zinc-400">{deleteTarget?.name}</p>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setDeleteOpen(false)}>
+            <Button
+              variant="outline"
+              className="border-zinc-700 text-zinc-400"
+              onClick={() => setDeleteOpen(false)}
+            >
               Cancelar
             </Button>
-            <Button onClick={handleDelete} disabled={loading} variant="destructive" className="gap-2">
+            <Button
+              onClick={handleDelete}
+              disabled={loading}
+              variant="destructive"
+              className="gap-2"
+            >
               {loading && <RefreshCw size={13} className="animate-spin" />}
               Excluir
             </Button>
@@ -529,7 +739,13 @@ export default function Ramais() {
       </Dialog>
 
       {/* ── Dialog: Teste de ligação ───────────────────────────────────────── */}
-      <Dialog open={testOpen} onOpenChange={(open) => { setTestOpen(open); if (!open) setTestFeedback(null); }}>
+      <Dialog
+        open={testOpen}
+        onOpenChange={(open) => {
+          setTestOpen(open);
+          if (!open) setTestFeedback(null);
+        }}
+      >
         <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -542,21 +758,35 @@ export default function Ramais() {
           </DialogHeader>
           <div className="space-y-3 py-1">
             {testFeedback && (
-              <Alert className={`border ${testFeedback.type === 'error' ? 'border-red-500/40 bg-red-500/10' : 'border-green-500/40 bg-green-500/10'}`}>
-                <AlertDescription className={testFeedback.type === 'error' ? 'text-red-300' : 'text-green-300'}>
+              <Alert
+                className={`border ${testFeedback.type === "error" ? "border-red-500/40 bg-red-500/10" : "border-green-500/40 bg-green-500/10"}`}
+              >
+                <AlertDescription
+                  className={
+                    testFeedback.type === "error"
+                      ? "text-red-300"
+                      : "text-green-300"
+                  }
+                >
                   {testFeedback.msg}
                 </AlertDescription>
               </Alert>
             )}
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-300">Ramal de origem</label>
+              <label className="text-sm font-medium text-zinc-300">
+                Ramal de origem
+              </label>
               <Select value={sourceId} onValueChange={setSourceId}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
                   {extensions.map((e) => (
-                    <SelectItem key={e.id} value={String(e.id)} className="text-zinc-100 focus:bg-zinc-700">
+                    <SelectItem
+                      key={e.id}
+                      value={String(e.id)}
+                      className="text-zinc-100 focus:bg-zinc-700"
+                    >
                       {e.number} — {e.name}
                     </SelectItem>
                   ))}
@@ -564,14 +794,20 @@ export default function Ramais() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium text-zinc-300">Ramal de destino</label>
+              <label className="text-sm font-medium text-zinc-300">
+                Ramal de destino
+              </label>
               <Select value={destId} onValueChange={setDestId}>
                 <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
                   <SelectValue placeholder="Selecione..." />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
                   {extensions.map((e) => (
-                    <SelectItem key={e.id} value={String(e.id)} className="text-zinc-100 focus:bg-zinc-700">
+                    <SelectItem
+                      key={e.id}
+                      value={String(e.id)}
+                      className="text-zinc-100 focus:bg-zinc-700"
+                    >
                       {e.number} — {e.name}
                     </SelectItem>
                   ))}
@@ -580,7 +816,11 @@ export default function Ramais() {
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setTestOpen(false)}>
+            <Button
+              variant="outline"
+              className="border-zinc-700 text-zinc-400"
+              onClick={() => setTestOpen(false)}
+            >
               Fechar
             </Button>
             <Button

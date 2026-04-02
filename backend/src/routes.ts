@@ -118,7 +118,8 @@ export const createRoutes = (io: Server) => {
     const user = await User.findByPk(req.user!.id, {
       attributes: ["id", "username", "role"],
     });
-    if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+    if (!user)
+      return res.status(404).json({ message: "Usuário não encontrado" });
     return res.json(user);
   });
 
@@ -130,101 +131,135 @@ export const createRoutes = (io: Server) => {
   };
 
   // ── CRUD de Usuários (admin only) ────────────────────────────────
-  router.get("/users", verifyToken, requireAdmin, async (req: Request, res: Response) => {
-    const users = await User.findAll({
-      attributes: ["id", "username", "role", "createdAt"],
-      order: [["createdAt", "ASC"]],
-    });
-    return res.json(users);
-  });
+  router.get(
+    "/users",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const users = await User.findAll({
+        attributes: ["id", "username", "role", "createdAt"],
+        order: [["createdAt", "ASC"]],
+      });
+      return res.json(users);
+    },
+  );
 
-  router.post("/users", verifyToken, requireAdmin, async (req: Request, res: Response) => {
-    const { username, password, role } = req.body;
-    if (!username || !password || !role)
-      return res.status(400).json({ message: "Preencha todos os campos" });
-    if (!["admin", "supervisor", "agent"].includes(role))
-      return res.status(400).json({ message: "Role inválido" });
-    const existing = await User.findOne({ where: { username } });
-    if (existing)
-      return res.status(409).json({ message: "Username já existe" });
-    const passwordHash = bcrypt.hashSync(password, 10);
-    const user = await User.create({ username, passwordHash, role });
-    return res.status(201).json({
-      id: user.id,
-      username: (user as any).username,
-      role: (user as any).role,
-      createdAt: (user as any).createdAt,
-    });
-  });
+  router.post(
+    "/users",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const { username, password, role } = req.body;
+      if (!username || !password || !role)
+        return res.status(400).json({ message: "Preencha todos os campos" });
+      if (!["admin", "supervisor", "agent"].includes(role))
+        return res.status(400).json({ message: "Role inválido" });
+      const existing = await User.findOne({ where: { username } });
+      if (existing)
+        return res.status(409).json({ message: "Username já existe" });
+      const passwordHash = bcrypt.hashSync(password, 10);
+      const user = await User.create({ username, passwordHash, role });
+      return res.status(201).json({
+        id: user.id,
+        username: (user as any).username,
+        role: (user as any).role,
+        createdAt: (user as any).createdAt,
+      });
+    },
+  );
 
-  router.patch("/users/:id", verifyToken, requireAdmin, async (req: Request, res: Response) => {
-    const user = await User.findByPk(req.params.id) as any;
-    if (!user)
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    const { username, password, role } = req.body;
-    if (username) user.username = username;
-    if (password) user.passwordHash = bcrypt.hashSync(password, 10);
-    if (role && ["admin", "supervisor", "agent"].includes(role))
-      user.role = role;
-    await user.save();
-    return res.json({
-      id: user.id,
-      username: user.username,
-      role: user.role,
-      createdAt: user.createdAt,
-    });
-  });
+  router.patch(
+    "/users/:id",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const user = (await User.findByPk(req.params.id)) as any;
+      if (!user)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      const { username, password, role } = req.body;
+      if (username) user.username = username;
+      if (password) user.passwordHash = bcrypt.hashSync(password, 10);
+      if (role && ["admin", "supervisor", "agent"].includes(role))
+        user.role = role;
+      await user.save();
+      return res.json({
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        createdAt: user.createdAt,
+      });
+    },
+  );
 
-  router.delete("/users/:id", verifyToken, requireAdmin, async (req: Request, res: Response) => {
-    if (String(req.user!.id) === String(req.params.id))
-      return res
-        .status(400)
-        .json({ message: "Não é possível excluir sua própria conta" });
-    const user = await User.findByPk(req.params.id);
-    if (!user)
-      return res.status(404).json({ message: "Usuário não encontrado" });
-    await user.destroy();
-    return res.json({ message: "Usuário excluído" });
-  });
+  router.delete(
+    "/users/:id",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      if (String(req.user!.id) === String(req.params.id))
+        return res
+          .status(400)
+          .json({ message: "Não é possível excluir sua própria conta" });
+      const user = await User.findByPk(req.params.id);
+      if (!user)
+        return res.status(404).json({ message: "Usuário não encontrado" });
+      await user.destroy();
+      return res.json({ message: "Usuário excluído" });
+    },
+  );
 
   // Endpoints do Supervisor
-  router.get("/supervisor/agents", verifyToken, async (req: Request, res: Response) => {
-    const agents = await Extension.findAll({
-      include: [{ model: VoipLine, as: "VoipLine", attributes: ["name"] }],
-      order: [["name", "ASC"]],
-    }) as any[];
-    return res.json(
-      agents.map((a) => ({
-        id: a.id,
-        number: a.number,
-        name: a.name,
-        status: a.status,
-        pauseReason: a.pauseReason,
-        voipLine: a.VoipLine ? a.VoipLine.name : null,
-        updatedAt: a.updatedAt,
-      }))
-    );
-  });
+  router.get(
+    "/supervisor/agents",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const agents = (await Extension.findAll({
+        include: [{ model: VoipLine, as: "VoipLine", attributes: ["name"] }],
+        order: [["name", "ASC"]],
+      })) as any[];
+      return res.json(
+        agents.map((a) => ({
+          id: a.id,
+          number: a.number,
+          name: a.name,
+          status: a.status,
+          pauseReason: a.pauseReason,
+          voipLine: a.VoipLine ? a.VoipLine.name : null,
+          updatedAt: a.updatedAt,
+        })),
+      );
+    },
+  );
 
-  router.post("/supervisor/agents/:id/force-pause", verifyToken, async (req: Request, res: Response) => {
-    const agent = await Extension.findByPk(req.params.id) as any;
-    if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
-    agent.status = "paused";
-    agent.pauseReason = req.body.reason || "Pausa administrativa";
-    await agent.save();
-    io.emit("dashboard:update");
-    return res.json({ ok: true });
-  });
+  router.post(
+    "/supervisor/agents/:id/force-pause",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const agent = (await Extension.findByPk(req.params.id)) as any;
+      if (!agent)
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      agent.status = "paused";
+      agent.pauseReason = req.body.reason || "Pausa administrativa";
+      await agent.save();
+      io.emit("dashboard:update");
+      return res.json({ ok: true });
+    },
+  );
 
-  router.post("/supervisor/agents/:id/resume", verifyToken, async (req: Request, res: Response) => {
-    const agent = await Extension.findByPk(req.params.id) as any;
-    if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
-    agent.status = "online";
-    agent.pauseReason = null;
-    await agent.save();
-    io.emit("dashboard:update");
-    return res.json({ ok: true });
-  });
+  router.post(
+    "/supervisor/agents/:id/resume",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const agent = (await Extension.findByPk(req.params.id)) as any;
+      if (!agent)
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      agent.status = "online";
+      agent.pauseReason = null;
+      await agent.save();
+      io.emit("dashboard:update");
+      return res.json({ ok: true });
+    },
+  );
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
     const receivedKey = req.headers["x-internal-key"];
@@ -301,10 +336,10 @@ export const createRoutes = (io: Server) => {
   router.use(verifyToken);
 
   const buildUraCampaignStats = async (campaignId: number) => {
-    const contacts = await UraReverseContact.findAll({
+    const contacts = (await UraReverseContact.findAll({
       where: { campaignId },
       attributes: ["status", "attempts"],
-    }) as any[];
+    })) as any[];
 
     const stats: Record<string, number> = {
       total: contacts.length,
@@ -328,14 +363,14 @@ export const createRoutes = (io: Server) => {
   };
 
   router.get("/ura-reverse/campaigns", async (_, res: Response) => {
-    const campaigns = await UraReverseCampaign.findAll({
+    const campaigns = (await UraReverseCampaign.findAll({
       include: [
         { model: VoipLine, attributes: ["id", "name", "host", "port"] },
         { model: UraReverseOption, as: "options" },
         { model: UraReverseContact, as: "contacts" },
       ],
       order: [["createdAt", "DESC"]],
-    }) as any[];
+    })) as any[];
 
     const payload = await Promise.all(
       campaigns.map(async (campaign) => ({
@@ -396,7 +431,9 @@ export const createRoutes = (io: Server) => {
     "/ura-reverse/campaigns/:id/audio",
     uploadAudio.single("audio"),
     async (req: Request, res: Response) => {
-      const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
       }
@@ -441,96 +478,109 @@ export const createRoutes = (io: Server) => {
     },
   );
 
-  router.get("/ura-reverse/campaigns/:id/options", async (req: Request, res: Response) => {
-    const options = await UraReverseOption.findAll({
-      where: { campaignId: req.params.id },
-      order: [["keyDigit", "ASC"]],
-    });
-    res.json(options);
-  });
+  router.get(
+    "/ura-reverse/campaigns/:id/options",
+    async (req: Request, res: Response) => {
+      const options = await UraReverseOption.findAll({
+        where: { campaignId: req.params.id },
+        order: [["keyDigit", "ASC"]],
+      });
+      res.json(options);
+    },
+  );
 
-  router.post("/ura-reverse/campaigns/:id/options", async (req: Request, res: Response) => {
-    const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha URA não encontrada" });
-    }
-
-    const options = Array.isArray(req.body?.options) ? req.body.options : [];
-    const validDigits = new Set([
-      "0",
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "7",
-      "8",
-      "9",
-    ]);
-    const validActions = new Set([
-      "transfer_extension",
-      "speak_commercial",
-      "hangup",
-    ]);
-
-    for (const option of options) {
-      const digit = String(option.keyDigit || "").trim();
-      const action = String(option.actionType || "").trim();
-
-      if (!validDigits.has(digit)) {
-        return res.status(400).json({ message: `Tecla inválida: ${digit}` });
+  router.post(
+    "/ura-reverse/campaigns/:id/options",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha URA não encontrada" });
       }
 
-      if (!validActions.has(action)) {
-        return res.status(400).json({ message: `Ação inválida: ${action}` });
+      const options = Array.isArray(req.body?.options) ? req.body.options : [];
+      const validDigits = new Set([
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+      ]);
+      const validActions = new Set([
+        "transfer_extension",
+        "speak_commercial",
+        "hangup",
+      ]);
+
+      for (const option of options) {
+        const digit = String(option.keyDigit || "").trim();
+        const action = String(option.actionType || "").trim();
+
+        if (!validDigits.has(digit)) {
+          return res.status(400).json({ message: `Tecla inválida: ${digit}` });
+        }
+
+        if (!validActions.has(action)) {
+          return res.status(400).json({ message: `Ação inválida: ${action}` });
+        }
+
+        if (
+          action === "transfer_extension" &&
+          !String(option.targetExtension || "").trim()
+        ) {
+          return res.status(400).json({
+            message: `Ramal obrigatório para transferência na tecla ${digit}`,
+          });
+        }
       }
 
-      if (
-        action === "transfer_extension" &&
-        !String(option.targetExtension || "").trim()
-      ) {
-        return res.status(400).json({
-          message: `Ramal obrigatório para transferência na tecla ${digit}`,
-        });
+      await UraReverseOption.destroy({ where: { campaignId: campaign.id } });
+      if (options.length) {
+        await UraReverseOption.bulkCreate(
+          options.map((option: any) => ({
+            campaignId: campaign.id,
+            keyDigit: String(option.keyDigit).trim(),
+            actionType: String(option.actionType).trim(),
+            targetExtension: option.targetExtension
+              ? String(option.targetExtension).trim()
+              : null,
+          })),
+        );
       }
-    }
 
-    await UraReverseOption.destroy({ where: { campaignId: campaign.id } });
-    if (options.length) {
-      await UraReverseOption.bulkCreate(
-        options.map((option: any) => ({
-          campaignId: campaign.id,
-          keyDigit: String(option.keyDigit).trim(),
-          actionType: String(option.actionType).trim(),
-          targetExtension: option.targetExtension
-            ? String(option.targetExtension).trim()
-            : null,
-        })),
-      );
-    }
+      const saved = await UraReverseOption.findAll({
+        where: { campaignId: campaign.id },
+        order: [["keyDigit", "ASC"]],
+      });
+      return res.json(saved);
+    },
+  );
 
-    const saved = await UraReverseOption.findAll({
-      where: { campaignId: campaign.id },
-      order: [["keyDigit", "ASC"]],
-    });
-    return res.json(saved);
-  });
-
-  router.get("/ura-reverse/campaigns/:id/contacts", async (req: Request, res: Response) => {
-    const contacts = await UraReverseContact.findAll({
-      where: { campaignId: req.params.id },
-      order: [["createdAt", "DESC"]],
-      limit: 500,
-    });
-    return res.json(contacts);
-  });
+  router.get(
+    "/ura-reverse/campaigns/:id/contacts",
+    async (req: Request, res: Response) => {
+      const contacts = await UraReverseContact.findAll({
+        where: { campaignId: req.params.id },
+        order: [["createdAt", "DESC"]],
+        limit: 500,
+      });
+      return res.json(contacts);
+    },
+  );
 
   router.post(
     "/ura-reverse/campaigns/:id/contacts/upload",
     upload.single("file"),
     async (req: Request, res: Response) => {
-      const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
       }
@@ -540,7 +590,10 @@ export const createRoutes = (io: Server) => {
       }
 
       const csv = req.file.buffer.toString("utf-8");
-      const records = parse(csv, { columns: true, skip_empty_lines: true }) as any[];
+      const records = parse(csv, {
+        columns: true,
+        skip_empty_lines: true,
+      }) as any[];
 
       const normalized = records
         .map((row: any) =>
@@ -584,57 +637,72 @@ export const createRoutes = (io: Server) => {
     },
   );
 
-  router.post("/ura-reverse/campaigns/:id/start", async (req: Request, res: Response) => {
-    const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha URA não encontrada" });
-    }
+  router.post(
+    "/ura-reverse/campaigns/:id/start",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha URA não encontrada" });
+      }
 
-    campaign.status = "running";
-    await campaign.save();
-    await emitCampaignStats(campaign.id);
-    io.emit("ura-reverse:campaign-status", {
-      campaignId: campaign.id,
-      status: campaign.status,
-    });
+      campaign.status = "running";
+      await campaign.save();
+      await emitCampaignStats(campaign.id);
+      io.emit("ura-reverse:campaign-status", {
+        campaignId: campaign.id,
+        status: campaign.status,
+      });
 
-    return res.json({ message: "Campanha URA iniciada" });
-  });
+      return res.json({ message: "Campanha URA iniciada" });
+    },
+  );
 
-  router.post("/ura-reverse/campaigns/:id/pause", async (req: Request, res: Response) => {
-    const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha URA não encontrada" });
-    }
+  router.post(
+    "/ura-reverse/campaigns/:id/pause",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha URA não encontrada" });
+      }
 
-    campaign.status = "paused";
-    await campaign.save();
-    io.emit("ura-reverse:campaign-status", {
-      campaignId: campaign.id,
-      status: campaign.status,
-    });
+      campaign.status = "paused";
+      await campaign.save();
+      io.emit("ura-reverse:campaign-status", {
+        campaignId: campaign.id,
+        status: campaign.status,
+      });
 
-    return res.json({ message: "Campanha URA pausada" });
-  });
+      return res.json({ message: "Campanha URA pausada" });
+    },
+  );
 
-  router.post("/ura-reverse/campaigns/:id/finish", async (req: Request, res: Response) => {
-    const campaign = await UraReverseCampaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha URA não encontrada" });
-    }
+  router.post(
+    "/ura-reverse/campaigns/:id/finish",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(
+        req.params.id,
+      )) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha URA não encontrada" });
+      }
 
-    campaign.status = "finished";
-    await campaign.save();
-    io.emit("ura-reverse:campaign-status", {
-      campaignId: campaign.id,
-      status: campaign.status,
-    });
+      campaign.status = "finished";
+      await campaign.save();
+      io.emit("ura-reverse:campaign-status", {
+        campaignId: campaign.id,
+        status: campaign.status,
+      });
 
-    return res.json({ message: "Campanha URA finalizada" });
-  });
+      return res.json({ message: "Campanha URA finalizada" });
+    },
+  );
 
   router.get("/dashboard", async (_, res: Response) => {
-    const extensions = await Extension.findAll() as any[];
+    const extensions = (await Extension.findAll()) as any[];
     const campaigns = await Campaign.findAll({
       order: [["createdAt", "DESC"]],
       limit: 5,
@@ -657,17 +725,17 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/extensions", async (_, res: Response) => {
-    const extensions = await Extension.findAll({
+    const extensions = (await Extension.findAll({
       include: [
         { model: VoipLine, attributes: ["id", "name", "host", "port"] },
       ],
       order: [["number", "ASC"]],
-    }) as any[];
+    })) as any[];
     // Retorna também o campo password para administração (remova se não quiser exibir a senha)
     res.json(
       extensions.map((e) => ({
         ...withExtensionSector(e),
-        password: e.password,
+        sipPassword: e.password,
         voipLineId: e.voipLineId || null,
         VoipLine: e.VoipLine
           ? { id: e.VoipLine.id, name: e.VoipLine.name }
@@ -702,19 +770,19 @@ export const createRoutes = (io: Server) => {
     const password = sipPassword || generateRandomPassword();
 
     // Salva ramal com senha persistida
-    const extension = await Extension.create({
+    const extension = (await Extension.create({
       number: normalizedNumber,
       name,
       password,
       status: "offline",
       voipLineId: voipLineId ? Number(voipLineId) : null,
-    }) as any;
+    })) as any;
 
     try {
       // determine context from associated VoIP line (if provided)
       let context = "default";
       if (voipLineId) {
-        const line = await VoipLine.findByPk(Number(voipLineId)) as any;
+        const line = (await VoipLine.findByPk(Number(voipLineId))) as any;
         if (line && line.context) context = line.context;
       }
 
@@ -729,6 +797,7 @@ export const createRoutes = (io: Server) => {
     } catch (error: any) {
       return res.status(201).json({
         ...withExtensionSector(extension),
+        sipPassword: password,
         warning:
           "Ramal salvo no banco, mas falhou provisionamento no Asterisk. Verifique AMI e arquivo sip_custom.conf.",
         detail: error.message,
@@ -737,27 +806,32 @@ export const createRoutes = (io: Server) => {
 
     io.emit("dashboard:update");
     // Retorna ramal e senha ao frontend
-    res.status(201).json({ ...withExtensionSector(extension), password });
+    res
+      .status(201)
+      .json({ ...withExtensionSector(extension), sipPassword: password });
   });
 
-  router.patch("/extensions/:id/status", async (req: Request, res: Response) => {
-    const { status } = req.body;
-    const extension = await Extension.findByPk(req.params.id) as any;
-    if (!extension) {
-      return res.status(404).json({ message: "Ramal não encontrado" });
-    }
+  router.patch(
+    "/extensions/:id/status",
+    async (req: Request, res: Response) => {
+      const { status } = req.body;
+      const extension = (await Extension.findByPk(req.params.id)) as any;
+      if (!extension) {
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      }
 
-    extension.status = status;
-    if (status !== "paused") {
-      extension.pauseReason = null;
-    }
-    await extension.save();
-    io.emit("dashboard:update");
-    return res.json(withExtensionSector(extension));
-  });
+      extension.status = status;
+      if (status !== "paused") {
+        extension.pauseReason = null;
+      }
+      await extension.save();
+      io.emit("dashboard:update");
+      return res.json(withExtensionSector(extension));
+    },
+  );
 
   router.patch("/extensions/:id/pause", async (req: Request, res: Response) => {
-    const extension = await Extension.findByPk(req.params.id) as any;
+    const extension = (await Extension.findByPk(req.params.id)) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -776,22 +850,25 @@ export const createRoutes = (io: Server) => {
     return res.json(withExtensionSector(extension));
   });
 
-  router.patch("/extensions/:id/resume", async (req: Request, res: Response) => {
-    const extension = await Extension.findByPk(req.params.id) as any;
-    if (!extension) {
-      return res.status(404).json({ message: "Ramal não encontrado" });
-    }
+  router.patch(
+    "/extensions/:id/resume",
+    async (req: Request, res: Response) => {
+      const extension = (await Extension.findByPk(req.params.id)) as any;
+      if (!extension) {
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      }
 
-    extension.status = "online";
-    extension.pauseReason = null;
-    await extension.save();
+      extension.status = "online";
+      extension.pauseReason = null;
+      await extension.save();
 
-    io.emit("dashboard:update");
-    return res.json(withExtensionSector(extension));
-  });
+      io.emit("dashboard:update");
+      return res.json(withExtensionSector(extension));
+    },
+  );
 
   router.patch("/extensions/:id", async (req: Request, res: Response) => {
-    const extension = await Extension.findByPk(req.params.id) as any;
+    const extension = (await Extension.findByPk(req.params.id)) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -843,7 +920,9 @@ export const createRoutes = (io: Server) => {
     // determine context from associated VoIP line (if any)
     let context = "default";
     if (extension.voipLineId) {
-      const line = await VoipLine.findByPk(Number(extension.voipLineId)) as any;
+      const line = (await VoipLine.findByPk(
+        Number(extension.voipLineId),
+      )) as any;
       if (line && line.context) context = line.context;
     }
 
@@ -857,11 +936,14 @@ export const createRoutes = (io: Server) => {
     });
 
     io.emit("dashboard:update");
-    return res.json({ ...withExtensionSector(extension), password });
+    return res.json({
+      ...withExtensionSector(extension),
+      sipPassword: password,
+    });
   });
 
   router.delete("/extensions/:id", async (req: Request, res: Response) => {
-    const extension = await Extension.findByPk(req.params.id) as any;
+    const extension = (await Extension.findByPk(req.params.id)) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -874,106 +956,117 @@ export const createRoutes = (io: Server) => {
     return res.json({ message: "Ramal deletado com sucesso" });
   });
 
-  router.post("/extensions/:id/provision", async (req: Request, res: Response) => {
-    const extension = await Extension.findByPk(req.params.id) as any;
-    if (!extension) {
-      return res.status(404).json({ message: "Ramal não encontrado" });
-    }
+  router.post(
+    "/extensions/:id/provision",
+    async (req: Request, res: Response) => {
+      const extension = (await Extension.findByPk(req.params.id)) as any;
+      if (!extension) {
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      }
 
-    // Usa a senha persistida, a menos que uma nova seja enviada
-    let password = extension.password;
-    if (req.body?.sipPassword) {
-      password = req.body.sipPassword;
-      extension.password = password;
-      await extension.save();
-    }
+      // Usa a senha persistida, a menos que uma nova seja enviada
+      let password = extension.password;
+      if (req.body?.sipPassword) {
+        password = req.body.sipPassword;
+        extension.password = password;
+        await extension.save();
+      }
 
-    // determine context: prefer provided voipLineId in body, fallback to stored association
-    let context = "default";
-    const voipLineIdFromBody = req.body?.voipLineId;
-    const voipLineToUse =
-      voipLineIdFromBody !== undefined
-        ? voipLineIdFromBody
-        : extension.voipLineId;
-    if (voipLineToUse) {
-      const line = await VoipLine.findByPk(Number(voipLineToUse)) as any;
-      if (line && line.context) context = line.context;
-    }
+      // determine context: prefer provided voipLineId in body, fallback to stored association
+      let context = "default";
+      const voipLineIdFromBody = req.body?.voipLineId;
+      const voipLineToUse =
+        voipLineIdFromBody !== undefined
+          ? voipLineIdFromBody
+          : extension.voipLineId;
+      if (voipLineToUse) {
+        const line = (await VoipLine.findByPk(Number(voipLineToUse))) as any;
+        if (line && line.context) context = line.context;
+      }
 
-    await upsertSipExtension({
-      number: extension.number,
-      secret: password,
-      context,
-      voipLineName: voipLineToUse
-        ? ((await VoipLine.findByPk(Number(voipLineToUse))) as any)?.name
-        : null,
-    });
-
-    return res.json({ message: "Ramal provisionado no Asterisk", password });
-  });
-
-  router.post("/extensions/provision-all", async (req: Request, res: Response) => {
-    const extensions = await Extension.findAll({ order: [["number", "ASC"]] }) as any[];
-
-    for (const extension of extensions) {
       await upsertSipExtension({
         number: extension.number,
-        secret: extension.password,
-      });
-    }
-
-    return res.json({
-      message: "Todos os ramais foram reprovisionados no Asterisk",
-      total: extensions.length,
-    });
-  });
-
-  router.post("/calls/test-between-extensions", async (req: Request, res: Response) => {
-    const { sourceExtensionId, targetExtensionId } = req.body || {};
-
-    if (!sourceExtensionId || !targetExtensionId) {
-      return res.status(400).json({
-        message: "sourceExtensionId e targetExtensionId são obrigatórios",
-      });
-    }
-
-    const [sourceExtension, targetExtension] = await Promise.all([
-      Extension.findByPk(sourceExtensionId),
-      Extension.findByPk(targetExtensionId),
-    ]) as any[];
-
-    if (!sourceExtension || !targetExtension) {
-      return res.status(404).json({
-        message: "Ramal de origem ou destino não encontrado",
-      });
-    }
-
-    try {
-      const action = await originateCall(
-        sourceExtension.number,
-        targetExtension.number,
-      );
-
-      io.emit("call:update", {
-        type: "test_extension_call",
-        sourceExtension: sourceExtension.number,
-        targetExtension: targetExtension.number,
+        secret: password,
+        context,
+        voipLineName: voipLineToUse
+          ? ((await VoipLine.findByPk(Number(voipLineToUse))) as any)?.name
+          : null,
       });
 
-      return res.status(201).json({
-        message:
-          "Ligação de teste iniciada. A gravação será salva automaticamente pelo dialplan local-ramais.",
-        sourceExtension: sourceExtension.number,
-        targetExtension: targetExtension.number,
-        action,
+      return res.json({ message: "Ramal provisionado no Asterisk", password });
+    },
+  );
+
+  router.post(
+    "/extensions/provision-all",
+    async (req: Request, res: Response) => {
+      const extensions = (await Extension.findAll({
+        order: [["number", "ASC"]],
+      })) as any[];
+
+      for (const extension of extensions) {
+        await upsertSipExtension({
+          number: extension.number,
+          secret: extension.password,
+        });
+      }
+
+      return res.json({
+        message: "Todos os ramais foram reprovisionados no Asterisk",
+        total: extensions.length,
       });
-    } catch (error: any) {
-      return res.status(500).json({
-        message: "Falha ao iniciar ligação de teste entre ramais",
-        detail: error.message,
-      });
-    }
-  });
+    },
+  );
+
+  router.post(
+    "/calls/test-between-extensions",
+    async (req: Request, res: Response) => {
+      const { sourceExtensionId, targetExtensionId } = req.body || {};
+
+      if (!sourceExtensionId || !targetExtensionId) {
+        return res.status(400).json({
+          message: "sourceExtensionId e targetExtensionId são obrigatórios",
+        });
+      }
+
+      const [sourceExtension, targetExtension] = (await Promise.all([
+        Extension.findByPk(sourceExtensionId),
+        Extension.findByPk(targetExtensionId),
+      ])) as any[];
+
+      if (!sourceExtension || !targetExtension) {
+        return res.status(404).json({
+          message: "Ramal de origem ou destino não encontrado",
+        });
+      }
+
+      try {
+        const action = await originateCall(
+          sourceExtension.number,
+          targetExtension.number,
+        );
+
+        io.emit("call:update", {
+          type: "test_extension_call",
+          sourceExtension: sourceExtension.number,
+          targetExtension: targetExtension.number,
+        });
+
+        return res.status(201).json({
+          message:
+            "Ligação de teste iniciada. A gravação será salva automaticamente pelo dialplan local-ramais.",
+          sourceExtension: sourceExtension.number,
+          targetExtension: targetExtension.number,
+          action,
+        });
+      } catch (error: any) {
+        return res.status(500).json({
+          message: "Falha ao iniciar ligação de teste entre ramais",
+          detail: error.message,
+        });
+      }
+    },
+  );
 
   router.get("/voip-lines", async (_, res: Response) => {
     const lines = await VoipLine.findAll({ order: [["name", "ASC"]] });
@@ -1023,7 +1116,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.patch("/voip-lines/:id", async (req: Request, res: Response) => {
-    const line = await VoipLine.findByPk(req.params.id) as any;
+    const line = (await VoipLine.findByPk(req.params.id)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
     }
@@ -1087,7 +1180,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/voip-lines/:id", async (req: Request, res: Response) => {
-    const line = await VoipLine.findByPk(req.params.id) as any;
+    const line = (await VoipLine.findByPk(req.params.id)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
     }
@@ -1099,23 +1192,26 @@ export const createRoutes = (io: Server) => {
     return res.json({ message: "Linha VoIP deletada com sucesso" });
   });
 
-  router.post("/voip-lines/:id/provision", async (req: Request, res: Response) => {
-    const line = await VoipLine.findByPk(req.params.id) as any;
-    if (!line) {
-      return res.status(404).json({ message: "Linha VoIP não encontrada" });
-    }
+  router.post(
+    "/voip-lines/:id/provision",
+    async (req: Request, res: Response) => {
+      const line = (await VoipLine.findByPk(req.params.id)) as any;
+      if (!line) {
+        return res.status(404).json({ message: "Linha VoIP não encontrada" });
+      }
 
-    await upsertSipVoipLine({
-      name: line.name,
-      username: req.body?.username || line.username,
-      secret: req.body?.secret || line.secret,
-      host: req.body?.host || line.host,
-      port: req.body?.port || line.port,
-      context: req.body?.context || line.context,
-    });
+      await upsertSipVoipLine({
+        name: line.name,
+        username: req.body?.username || line.username,
+        secret: req.body?.secret || line.secret,
+        host: req.body?.host || line.host,
+        port: req.body?.port || line.port,
+        context: req.body?.context || line.context,
+      });
 
-    return res.json({ message: "Linha VoIP provisionada no Asterisk" });
-  });
+      return res.json({ message: "Linha VoIP provisionada no Asterisk" });
+    },
+  );
 
   router.get("/campaigns", async (_, res: Response) => {
     const campaigns = await Campaign.findAll({
@@ -1130,22 +1226,25 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/campaigns/:id/report", async (req: Request, res: Response) => {
-    const campaign = await Campaign.findByPk(req.params.id, {
+    const campaign = (await Campaign.findByPk(req.params.id, {
       include: [
         { model: CampaignContact, as: "contacts" },
-        { model: Extension, as: "extensions", attributes: ["id", "number", "name"] },
+        {
+          model: Extension,
+          as: "extensions",
+          attributes: ["id", "number", "name"],
+        },
         { model: VoipLine, as: "voipLines", attributes: ["id", "name"] },
         {
           model: CallLog,
           as: "calls",
-          include: [
-            { model: Extension, attributes: ["id", "number", "name"] },
-          ],
+          include: [{ model: Extension, attributes: ["id", "number", "name"] }],
           order: [["createdAt", "DESC"]],
         },
       ],
-    }) as any;
-    if (!campaign) return res.status(404).json({ message: "Campanha não encontrada" });
+    })) as any;
+    if (!campaign)
+      return res.status(404).json({ message: "Campanha não encontrada" });
 
     const calls = campaign.calls || [];
     const contacts = campaign.contacts || [];
@@ -1153,12 +1252,23 @@ export const createRoutes = (io: Server) => {
       totalContacts: contacts.length,
       totalCalls: calls.length,
       atendida: calls.filter((c: any) => c.result === "atendida").length,
-      nao_atendida: calls.filter((c: any) => c.result === "nao_atendida").length,
-      numero_nao_existe: calls.filter((c: any) => c.result === "numero_nao_existe").length,
+      nao_atendida: calls.filter((c: any) => c.result === "nao_atendida")
+        .length,
+      numero_nao_existe: calls.filter(
+        (c: any) => c.result === "numero_nao_existe",
+      ).length,
       rejeitada: calls.filter((c: any) => c.result === "rejeitada").length,
     };
 
-    return res.json({ campaign: { id: campaign.id, name: campaign.name, status: campaign.status }, stats, calls });
+    return res.json({
+      campaign: {
+        id: campaign.id,
+        name: campaign.name,
+        status: campaign.status,
+      },
+      stats,
+      calls,
+    });
   });
 
   router.post("/campaigns", async (req: Request, res: Response) => {
@@ -1168,7 +1278,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.patch("/campaigns/:id", async (req: Request, res: Response) => {
-    const campaign = await Campaign.findByPk(req.params.id) as any;
+    const campaign = (await Campaign.findByPk(req.params.id)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1202,7 +1312,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/campaigns/:id", async (req: Request, res: Response) => {
-    const campaign = await Campaign.findByPk(req.params.id) as any;
+    const campaign = (await Campaign.findByPk(req.params.id)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1217,35 +1327,43 @@ export const createRoutes = (io: Server) => {
     return res.json({ message: "Campanha deletada com sucesso" });
   });
 
-  router.post("/campaigns/:id/assign-extensions", async (req: Request, res: Response) => {
-    const { extensionIds = [] } = req.body;
-    const campaign = await Campaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha não encontrada" });
-    }
+  router.post(
+    "/campaigns/:id/assign-extensions",
+    async (req: Request, res: Response) => {
+      const { extensionIds = [] } = req.body;
+      const campaign = (await Campaign.findByPk(req.params.id)) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha não encontrada" });
+      }
 
-    const extensions = await Extension.findAll({ where: { id: extensionIds } });
-    await campaign.setExtensions(extensions);
-    return res.json({ message: "Ramais vinculados com sucesso" });
-  });
+      const extensions = await Extension.findAll({
+        where: { id: extensionIds },
+      });
+      await campaign.setExtensions(extensions);
+      return res.json({ message: "Ramais vinculados com sucesso" });
+    },
+  );
 
-  router.post("/campaigns/:id/assign-voip-lines", async (req: Request, res: Response) => {
-    const { voipLineIds = [] } = req.body;
-    const campaign = await Campaign.findByPk(req.params.id) as any;
-    if (!campaign) {
-      return res.status(404).json({ message: "Campanha não encontrada" });
-    }
+  router.post(
+    "/campaigns/:id/assign-voip-lines",
+    async (req: Request, res: Response) => {
+      const { voipLineIds = [] } = req.body;
+      const campaign = (await Campaign.findByPk(req.params.id)) as any;
+      if (!campaign) {
+        return res.status(404).json({ message: "Campanha não encontrada" });
+      }
 
-    const lines = await VoipLine.findAll({ where: { id: voipLineIds } });
-    await campaign.setVoipLines(lines);
-    return res.json({ message: "Linhas VoIP vinculadas com sucesso" });
-  });
+      const lines = await VoipLine.findAll({ where: { id: voipLineIds } });
+      await campaign.setVoipLines(lines);
+      return res.json({ message: "Linhas VoIP vinculadas com sucesso" });
+    },
+  );
 
   router.post(
     "/campaigns/:id/upload-phones",
     upload.single("file"),
     async (req: Request, res: Response) => {
-      const campaign = await Campaign.findByPk(req.params.id) as any;
+      const campaign = (await Campaign.findByPk(req.params.id)) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha não encontrada" });
       }
@@ -1255,7 +1373,10 @@ export const createRoutes = (io: Server) => {
       }
 
       const csv = req.file.buffer.toString("utf-8");
-      const records = parse(csv, { columns: true, skip_empty_lines: true }) as any[];
+      const records = parse(csv, {
+        columns: true,
+        skip_empty_lines: true,
+      }) as any[];
 
       const contacts = records
         .map((row: any) => row.phoneNumber || row.phone || row.numero)
@@ -1274,7 +1395,7 @@ export const createRoutes = (io: Server) => {
   );
 
   router.post("/campaigns/:id/start", async (req: Request, res: Response) => {
-    const campaign = await Campaign.findByPk(req.params.id) as any;
+    const campaign = (await Campaign.findByPk(req.params.id)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1314,7 +1435,7 @@ export const createRoutes = (io: Server) => {
       String(optionTargets?.["3"] || option3TargetExtension || "").trim() ||
       defaultTarget;
 
-    const pendingLog = await UraLog.create({
+    const pendingLog = (await UraLog.create({
       uraRef,
       campaignId,
       extensionId,
@@ -1322,7 +1443,7 @@ export const createRoutes = (io: Server) => {
       selectedOption: null,
       audioPath: null,
       result: "pending",
-    }) as any;
+    })) as any;
 
     try {
       const response = await originateReverseIvr({
@@ -1410,7 +1531,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/recordings/:id", async (req: Request, res: Response) => {
-    const recording = await CallRecording.findByPk(req.params.id) as any;
+    const recording = (await CallRecording.findByPk(req.params.id)) as any;
     if (!recording) {
       return res.status(404).json({ message: "Gravação não encontrada" });
     }
@@ -1494,14 +1615,14 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/reports/recordings", async (_, res: Response) => {
-    const recordings = await CallRecording.findAll({
+    const recordings = (await CallRecording.findAll({
       include: [
         { model: Campaign, attributes: ["id", "name"] },
         { model: Extension, attributes: ["id", "number", "name"] },
         { model: CallLog, attributes: ["id", "phoneNumber", "result"] },
       ],
       order: [["createdAt", "DESC"]],
-    }) as any[];
+    })) as any[];
 
     res.json(
       recordings.map((recording) => ({
@@ -1512,7 +1633,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/reports/ura-reverse", async (_, res: Response) => {
-    const campaigns = await UraReverseCampaign.findAll({
+    const campaigns = (await UraReverseCampaign.findAll({
       include: [
         { model: VoipLine, attributes: ["id", "name", "host", "port"] },
         { model: UraReverseOption, as: "options" },
@@ -1531,7 +1652,7 @@ export const createRoutes = (io: Server) => {
         },
       ],
       order: [["createdAt", "DESC"]],
-    }) as any[];
+    })) as any[];
 
     const payload = await Promise.all(
       campaigns.map(async (campaign) => ({
