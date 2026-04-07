@@ -1,4 +1,5 @@
-import { Card, CardContent, Grid, Typography, FC } from "@mui/material";
+import { FC } from "react";
+import { Card, CardContent, Grid, Typography } from "@mui/material";
 import type { StatusCounts } from "../types";
 
 const statuses: (keyof StatusCounts)[] = [
@@ -18,7 +19,7 @@ const StatusCards: FC<StatusCardsProps> = ({ statusCounts }) => {
   return (
     <Grid container spacing={2} sx={{ mb: 2 }}>
       {statuses.map((key) => (
-        <Grid item xs={12} sm={6} md={4} lg={3} key={key}>
+        <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={key}>
           <Card>
             <CardContent>
               <Typography variant="subtitle2" color="text.secondary">

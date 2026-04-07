@@ -2,7 +2,12 @@ import fs from "fs/promises";
 import config from "../config";
 import { runCommand } from "../ami";
 
-const { asteriskSipCustomFile } = config;
+const {
+  asteriskSipCustomFile,
+  asteriskPjsipCustomFile,
+  asteriskExtensionsCustomFile,
+  asteriskQueuesCustomFile,
+} = config;
 
 const buildExtensionBlock = (
   number: string,
@@ -21,6 +26,13 @@ const buildSipVoipLineBlock = ({
   host,
   port = 5060,
   context = "default",
+  inboundContext,
+  type = "peer",
+  dtmfmode = "rfc2833",
+  fromdomain,
+  codecs = "ulaw,alaw",
+  callLimit = 0,
+  insecure = "invite,port",
 }: {
   name: string;
   username: string;
@@ -28,21 +40,62 @@ const buildSipVoipLineBlock = ({
   host: string;
   port?: number;
   context?: string;
-}) => `
+  inboundContext?: string | null;
+  type?: string;
+  dtmfmode?: string;
+  fromdomain?: string | null;
+  codecs?: string;
+  callLimit?: number;
+  insecure?: string | null;
+}) => {
+  // Monta as linhas allow= para cada codec
+  const codecList = (codecs || "ulaw,alaw")
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean);
+  const allowLines = codecList.map((c) => `allow=${c}`).join("\n");
+
+  // fromdomain e domain (alguns provedores exigem)
+  const fromdomainLine = fromdomain
+    ? `fromdomain=${fromdomain}\ndomain=${fromdomain}`
+    : "";
+
+  // insecure (pode ser vazio para troncos que exigem autenticação)
+  const insecureLine = insecure ? `insecure=${insecure}` : "";
+
+  // call-limit (0 = sem limite, não escreve a linha)
+  const callLimitLine = callLimit > 0 ? `call-limit=${callLimit}` : "";
+
+  // Se definido, adiciona contexto de entrada (inboundContext) comentado para referência
+  const inboundContextComment = inboundContext
+    ? `; Contexto de entrada (URA/receptivo): ${inboundContext}`
+    : "";
+
+  return (
+    `
 [${name}]
-type=peer
+type=${type}
 host=${host}
 port=${port}
 username=${username}
 fromuser=${username}
+${fromdomainLine}
 secret=${secret}
 context=${context}
+${inboundContextComment}
 disallow=all
-allow=ulaw
-allow=alaw
-insecure=invite,port
+${allowLines}
+${insecureLine}
 qualify=yes
-`;
+nat=force_rport,comedia
+directmedia=no
+dtmfmode=${dtmfmode}
+${callLimitLine}
+`
+      .replace(/\n{3,}/g, "\n\n")
+      .trim() + "\n"
+  );
+};
 
 const ensureFile = async (filePath: string) => {
   try {
@@ -52,7 +105,8 @@ const ensureFile = async (filePath: string) => {
   }
 };
 
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const upsertNamedBlock = async ({
   filePath,
@@ -84,7 +138,11 @@ const upsertNamedBlock = async ({
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
 };
 
-const removeNamedBlock = async ({ filePath, sectionName, scope }: {
+const removeNamedBlock = async ({
+  filePath,
+  sectionName,
+  scope,
+}: {
   filePath: string;
   sectionName: string;
   scope: string;
@@ -103,6 +161,67 @@ const removeNamedBlock = async ({ filePath, sectionName, scope }: {
   const updated = content.replace(markerRegex, "\n");
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
 };
+
+// ─────────────────────────────────────────────────────────
+// PJSIP / WebRTC
+// ─────────────────────────────────────────────────────────
+
+const buildPjsipExtensionBlock = (number: string, secret: string) => {
+  return `
+[${number}](webrtc-endpoint)
+auth=${number}-pjsip-auth
+aors=${number}-pjsip
+
+[${number}-pjsip-auth](webrtc-auth)
+username=${number}
+password=${secret}
+
+[${number}-pjsip](webrtc-aor)
+`;
+};
+
+export const upsertPjsipExtension = async ({
+  number,
+  secret = "1234",
+}: {
+  number: string;
+  secret?: string;
+}) => {
+  const numberText = String(number).trim();
+  if (!numberText) throw new Error("Número do ramal inválido");
+
+  await upsertNamedBlock({
+    filePath: asteriskPjsipCustomFile,
+    sectionName: numberText,
+    blockContent: buildPjsipExtensionBlock(numberText, secret),
+    scope: "pjsip-extension",
+  });
+
+  try {
+    await runCommand("module reload res_pjsip.so");
+  } catch {}
+};
+
+export const removePjsipExtensionProvision = async ({
+  number,
+}: {
+  number: string;
+}) => {
+  const numberText = String(number).trim();
+  if (!numberText) return;
+
+  await removeNamedBlock({
+    filePath: asteriskPjsipCustomFile,
+    sectionName: numberText,
+    scope: "pjsip-extension",
+  });
+
+  try {
+    await runCommand("module reload res_pjsip.so");
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────
 
 export const upsertSipExtension = async ({
   number,
@@ -144,6 +263,13 @@ export const upsertSipVoipLine = async ({
   host,
   port = 5060,
   context = "default",
+  inboundContext,
+  type = "peer",
+  dtmfmode = "rfc2833",
+  fromdomain,
+  codecs = "ulaw,alaw",
+  callLimit = 0,
+  insecure = "invite,port",
 }: {
   name: string;
   username: string;
@@ -151,6 +277,13 @@ export const upsertSipVoipLine = async ({
   host: string;
   port?: number;
   context?: string;
+  inboundContext?: string | null;
+  type?: string;
+  dtmfmode?: string;
+  fromdomain?: string | null;
+  codecs?: string;
+  callLimit?: number;
+  insecure?: string | null;
 }) => {
   const lineName = String(name || "").trim();
   if (!lineName) {
@@ -171,6 +304,13 @@ export const upsertSipVoipLine = async ({
       host,
       port,
       context,
+      inboundContext,
+      type,
+      dtmfmode,
+      fromdomain,
+      codecs,
+      callLimit,
+      insecure,
     }),
     scope: "sip-voip-line",
   });
@@ -180,7 +320,11 @@ export const upsertSipVoipLine = async ({
   } catch {}
 };
 
-export const removeExtensionProvision = async ({ number }: { number: string }) => {
+export const removeExtensionProvision = async ({
+  number,
+}: {
+  number: string;
+}) => {
   const numberText = String(number).trim();
   if (!numberText) {
     return;
@@ -211,5 +355,248 @@ export const removeVoipLineProvision = async ({ name }: { name: string }) => {
 
   try {
     await runCommand("sip reload");
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────
+// Central Telefônica (URA Receptiva) – dialplan
+// ─────────────────────────────────────────────────────────
+
+interface InboundIvrOptionParam {
+  keyDigit: string;
+  label?: string | null;
+  actionType: string;
+  targetExtension?: string | null;
+}
+
+const buildInboundIvrDialplan = ({
+  contextName,
+  name,
+  audioFile,
+  digitTimeoutSeconds,
+  maxInvalidAttempts,
+  fallbackExtension,
+  fallbackLabel,
+  dialTechnology,
+  options,
+}: {
+  contextName: string;
+  name: string;
+  audioFile?: string | null;
+  digitTimeoutSeconds: number;
+  maxInvalidAttempts: number;
+  fallbackExtension?: string | null;
+  fallbackLabel?: string | null;
+  dialTechnology: string;
+  options: InboundIvrOptionParam[];
+}) => {
+  const audio = audioFile || "silence/1";
+  const tech = (dialTechnology || "SIP").toUpperCase();
+  const fallback = fallbackExtension ? String(fallbackExtension).trim() : null;
+  const fbLabel = fallbackLabel || "Transbordo";
+
+  const optionLines = options
+    .map((opt) => {
+      const digit = String(opt.keyDigit).trim();
+      const lbl = opt.label || `Opção ${digit}`;
+      if (opt.actionType === "hangup" || !opt.targetExtension) {
+        return `exten => ${digit},1,NoOp(${contextName}: ${lbl} - desligar)\n same => n,Hangup()`;
+      }
+      const target = String(opt.targetExtension).trim();
+      if (opt.actionType === "transfer_queue") {
+        return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> fila ${target})\n same => n,Queue(${target},t,,,,60)\n same => n,Hangup()`;
+      }
+      return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> ${target})\n same => n,Dial(SIP/${target}&PJSIP/${target},30)\n same => n,Hangup()`;
+    })
+    .join("\n\n");
+
+  const fallbackBlock = fallback
+    ? `exten => transbordo,1,NoOp(${contextName}: ${fbLabel} -> ${fallback})\n same => n,Dial(${tech}/${fallback},30)\n same => n,Hangup()`
+    : `exten => transbordo,1,NoOp(${contextName}: sem transbordo configurado)\n same => n,Hangup()`;
+
+  return `
+[${contextName}]
+exten => s,1,NoOp(URA Receptiva: ${name})
+ same => n,Answer()
+ same => n,Wait(1)
+ same => n,Set(ATTEMPTS=0)
+ same => n(menu),Set(ATTEMPTS=\$[\${ATTEMPTS}+1])
+ same => n,Background(${audio})
+ same => n,WaitExten(${digitTimeoutSeconds})
+ same => n,Goto(transbordo,1)
+
+${optionLines}
+
+exten => i,1,NoOp(Opcao invalida - tentativa \${ATTEMPTS} de ${maxInvalidAttempts})
+ same => n,GotoIf(\$[\${ATTEMPTS} >= ${maxInvalidAttempts}]?transbordo,1)
+ same => n,Goto(s,menu)
+
+exten => t,1,NoOp(Timeout waiting for digit)
+ same => n,Goto(transbordo,1)
+
+${fallbackBlock}
+`;
+};
+
+export const upsertInboundIvrDialplan = async (params: {
+  contextName: string;
+  name: string;
+  audioFile?: string | null;
+  digitTimeoutSeconds: number;
+  maxInvalidAttempts: number;
+  fallbackExtension?: string | null;
+  fallbackLabel?: string | null;
+  dialTechnology: string;
+  options: InboundIvrOptionParam[];
+}) => {
+  const contextName = String(params.contextName || "").trim();
+  if (!contextName) throw new Error("contextName é obrigatório");
+
+  const blockContent = buildInboundIvrDialplan(params);
+
+  await upsertNamedBlock({
+    filePath: asteriskExtensionsCustomFile,
+    sectionName: contextName,
+    blockContent,
+    scope: "inbound-ivr",
+  });
+
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+export const removeInboundIvrDialplan = async ({
+  contextName,
+}: {
+  contextName: string;
+}) => {
+  const ctx = String(contextName || "").trim();
+  if (!ctx) return;
+
+  await removeNamedBlock({
+    filePath: asteriskExtensionsCustomFile,
+    sectionName: ctx,
+    scope: "inbound-ivr",
+  });
+
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────
+// Filas (Asterisk Queues) — queues_custom.conf
+// ─────────────────────────────────────────────────────────
+
+const buildQueueBlock = ({
+  name,
+  strategy,
+  timeout,
+  maxlen,
+  wrapuptime,
+  musiconhold,
+  announce,
+  members,
+}: {
+  name: string;
+  strategy: string;
+  timeout: number;
+  maxlen: number;
+  wrapuptime: number;
+  musiconhold?: string | null;
+  announce?: string | null;
+  members: Array<{ extensionNumber: string; penalty: number }>;
+}) => {
+  const lines: string[] = [
+    `[${name}]`,
+    `strategy=${strategy}`,
+    `timeout=${timeout}`,
+    `maxlen=${maxlen}`,
+    `wrapuptime=${wrapuptime}`,
+    `joinempty=yes`,
+    `leavewhenempty=no`,
+    `ringinuse=no`,
+  ];
+  if (musiconhold) lines.push(`musiconhold=${musiconhold}`);
+  if (announce) lines.push(`announce=${announce}`);
+  for (const m of members) {
+    lines.push(`member => SIP/${m.extensionNumber},${m.penalty}`);
+    lines.push(`member => PJSIP/${m.extensionNumber},${m.penalty}`);
+  }
+  return lines.join("\n");
+};
+
+const ensureQueuesHeader = async () => {
+  await ensureFile(asteriskQueuesCustomFile);
+  const content = await fs.readFile(asteriskQueuesCustomFile, "utf-8");
+  if (!content.includes("[general]")) {
+    await fs.writeFile(
+      asteriskQueuesCustomFile,
+      `[general]\npersistentmembers=yes\nautofill=yes\nmonitor-format=wav\nshared_lastcall=yes\n\n${content}`,
+      "utf-8",
+    );
+  }
+};
+
+export const upsertQueue = async ({
+  name,
+  strategy = "ringall",
+  timeout = 30,
+  maxlen = 0,
+  wrapuptime = 0,
+  musiconhold = null,
+  announce = null,
+  members = [],
+}: {
+  name: string;
+  strategy?: string;
+  timeout?: number;
+  maxlen?: number;
+  wrapuptime?: number;
+  musiconhold?: string | null;
+  announce?: string | null;
+  members?: Array<{ extensionNumber: string; penalty: number }>;
+}) => {
+  const queueName = String(name || "").trim();
+  if (!queueName) throw new Error("Nome da fila é obrigatório");
+
+  await ensureQueuesHeader();
+
+  const blockContent = buildQueueBlock({
+    name: queueName,
+    strategy,
+    timeout,
+    maxlen,
+    wrapuptime,
+    musiconhold,
+    announce,
+    members,
+  });
+
+  await upsertNamedBlock({
+    filePath: asteriskQueuesCustomFile,
+    sectionName: queueName,
+    blockContent,
+    scope: "queue",
+  });
+
+  try {
+    await runCommand("queue reload all");
+  } catch {}
+};
+
+export const removeQueue = async ({ name }: { name: string }) => {
+  const queueName = String(name || "").trim();
+  if (!queueName) return;
+
+  await removeNamedBlock({
+    filePath: asteriskQueuesCustomFile,
+    sectionName: queueName,
+    scope: "queue",
+  });
+
+  try {
+    await runCommand("queue reload all");
   } catch {}
 };

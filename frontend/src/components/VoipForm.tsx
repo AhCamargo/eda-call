@@ -54,7 +54,7 @@ const VoipForm: FC<VoipFormProps> = ({
   return (
     <Box component="form" onSubmit={submit} sx={{ mb: 2 }}>
       <Grid container spacing={1}>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.lineName")}
             value={form.name}
@@ -65,7 +65,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.username")}
             value={form.username}
@@ -76,7 +76,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.password")}
             value={form.secret}
@@ -87,7 +87,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.host")}
             value={form.host}
@@ -98,7 +98,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             type="number"
             label={t("voip.port")}
@@ -110,7 +110,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.context")}
             value={form.context}
@@ -121,7 +121,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <TextField
             label={t("voip.transport")}
             value={form.transport}
@@ -132,7 +132,7 @@ const VoipForm: FC<VoipFormProps> = ({
             fullWidth
           />
         </Grid>
-        <Grid item xs={12} md={3}>
+        <Grid size={{ xs: 12, md: 3 }}>
           <Button
             type="submit"
             variant="contained"

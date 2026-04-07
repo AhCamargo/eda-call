@@ -27,11 +27,19 @@ const loadExtensions = async () => {
 };
 
 const extensionNumberFromChannel = (channel: string, extensionNumbers: string[]) => {
-  if (!channel || typeof channel !== "string" || !channel.startsWith("SIP/")) {
+  if (!channel || typeof channel !== "string") {
     return null;
   }
 
-  const content = channel.slice(4);
+  let content: string | null = null;
+  if (channel.startsWith("SIP/")) {
+    content = channel.slice(4);
+  } else if (channel.startsWith("PJSIP/")) {
+    content = channel.slice(6);
+  }
+
+  if (!content) return null;
+
   const contentUpper = content.toUpperCase();
   for (const extNumber of extensionNumbers) {
     const extUpper = String(extNumber).toUpperCase();
@@ -130,7 +138,7 @@ const parseCallStatusMap = (lines: string[], extensionNumbers: string[], extensi
     const channelState = String(parts[4] || "").toLowerCase();
 
     const candidates: string[] = [];
-    if (channel.startsWith("SIP/")) {
+    if (channel.startsWith("SIP/") || channel.startsWith("PJSIP/")) {
       const channelExtension = extensionNumberFromChannel(
         channel,
         extensionNumbers,
@@ -178,8 +186,9 @@ const syncStatusesFromAsterisk = async (io: Server) => {
   const extensionNumbers = extensions.map((ext) => ext.number);
   const extensionNumbersSet = new Set<string>(extensionNumbers);
 
-  const [peersResponse, channelsResponse] = await Promise.allSettled([
+  const [peersResponse, pjsipContactsResponse, channelsResponse] = await Promise.allSettled([
     runCommand("sip show peers"),
+    runCommand("pjsip show contacts"),
     runCommand("core show channels concise"),
   ]);
 
@@ -187,12 +196,32 @@ const syncStatusesFromAsterisk = async (io: Server) => {
     peersResponse.status === "fulfilled"
       ? normalizeCommandOutput(peersResponse.value)
       : [];
+  const pjsipContactLines =
+    pjsipContactsResponse.status === "fulfilled"
+      ? normalizeCommandOutput(pjsipContactsResponse.value)
+      : [];
   const channelLines =
     channelsResponse.status === "fulfilled"
       ? normalizeCommandOutput(channelsResponse.value)
       : [];
 
   const peersOnlineMap = parsePeersOnlineMap(peerLines, extensionNumbersSet);
+
+  // Complementa com endpoints PJSIP registrados (via WebRTC)
+  // Linha de contato: "Contact: <number>-pjsip/<uri>  Avail  XXms"
+  for (const line of pjsipContactLines) {
+    const trimmed = String(line || "").trim();
+    if (!trimmed.toLowerCase().startsWith("contact:")) continue;
+    // Extrai o aor (ex: "1001-pjsip" ou "1001")
+    const aorPart = trimmed.split("/")[0].replace(/^contact:\s*/i, "").trim();
+    const extNumber = aorPart.replace(/-pjsip$/i, "");
+    if (extensionNumbersSet.has(extNumber)) {
+      const isAvail = trimmed.toLowerCase().includes("avail");
+      if (isAvail) {
+        peersOnlineMap.set(extNumber, true);
+      }
+    }
+  }
   const callStatusMap = parseCallStatusMap(
     channelLines,
     extensionNumbers,

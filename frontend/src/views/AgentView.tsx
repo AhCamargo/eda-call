@@ -1,5 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { usePbx } from '../context/PbxContext';
+import api from '../api';
+import { useSipClient, SipClientOptions } from '../hooks/useSipClient';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -9,10 +11,14 @@ import { Separator } from '@/components/ui/separator';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '@/components/ui/select';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle
+} from '@/components/ui/dialog';
 
 import {
   Phone, PhoneOff, PhoneMissed, Clock, Coffee, Pause, Play,
-  User, History, PhoneCall, Mic, MicOff, Volume2
+  User, History, PhoneCall, Mic, MicOff, PhoneForwarded, Wifi, WifiOff,
+  AlertCircle, Loader2, PauseCircle
 } from 'lucide-react';
 
 const STATUS_CONFIG = {
@@ -24,6 +30,14 @@ const STATUS_CONFIG = {
   in_campaign: { label: 'Em campanha',  color: 'bg-purple-400',   text: 'text-purple-400'  },
 };
 
+const SIP_STATUS_CONFIG = {
+  idle:         { label: 'SIP inativo',    icon: WifiOff,    color: 'text-zinc-500'   },
+  connecting:   { label: 'Conectando...',  icon: Loader2,    color: 'text-amber-400'  },
+  registered:   { label: 'SIP registrado', icon: Wifi,       color: 'text-emerald-400'},
+  unregistered: { label: 'Não registrado', icon: WifiOff,    color: 'text-zinc-500'   },
+  error:        { label: 'Erro SIP',       icon: AlertCircle,color: 'text-red-400'    },
+};
+
 const PAUSE_REASONS = [
   { value: 'Almoço',           label: '🍽 Almoço' },
   { value: 'Banheiro',         label: '🚻 Banheiro' },
@@ -32,12 +46,12 @@ const PAUSE_REASONS = [
   { value: 'Treinamento',      label: '📚 Treinamento' },
 ];
 
-function CallTimer({ startTime }) {
+function CallTimer({ startTime }: { startTime: number }) {
   const [now, setNow] = useState(Date.now());
-  useMemo(() => {
+  useEffect(() => {
     const id = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [startTime]);
 
   const elapsed = Math.floor((now - startTime) / 1000);
   const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
@@ -46,24 +60,50 @@ function CallTimer({ startTime }) {
 }
 
 export default function AgentView() {
-  const { extensions, reports, reportCallsByExtension, pauseExtension, resumeExtension } = usePbx();
+  const { extensions, reportCallsByExtension, pauseExtension, resumeExtension } = usePbx();
 
   const [selectedExtId, setSelectedExtId] = useState('');
   const [pauseReason, setPauseReason] = useState(PAUSE_REASONS[0].value);
-  const [callStartTime] = useState(Date.now());
-  const [micMuted, setMicMuted] = useState(false);
+  const [callStartTime, setCallStartTime] = useState(Date.now());
+  const [sipOptions, setSipOptions] = useState<SipClientOptions | null>(null);
+  const [transferTarget, setTransferTarget] = useState('');
+  const [showTransferDialog, setShowTransferDialog] = useState(false);
 
   const selectedExt = useMemo(
     () => extensions.find((e) => String(e.id) === selectedExtId),
     [extensions, selectedExtId]
   );
 
-  const statusCfg = selectedExt ? (STATUS_CONFIG[selectedExt.status] || STATUS_CONFIG.offline) : null;
-  const isInCall = selectedExt?.status === 'in_call';
-  const isRinging = selectedExt?.status === 'ringing';
-  const isPaused = selectedExt?.status === 'paused';
+  const sip = useSipClient(sipOptions);
 
-  // Histórico do ramal selecionado (últimas 8 ligações)
+  // Busca credenciais WebRTC ao selecionar ramal
+  useEffect(() => {
+    if (!selectedExtId) {
+      setSipOptions(null);
+      return;
+    }
+    api.get(`/extensions/${selectedExtId}/webrtc-credentials`)
+      .then((res) => setSipOptions(res.data))
+      .catch(() => setSipOptions(null));
+  }, [selectedExtId]);
+
+  // Inicia timer quando entra em ligação
+  useEffect(() => {
+    if (sip.callState === 'in_call') {
+      setCallStartTime(Date.now());
+    }
+  }, [sip.callState]);
+
+  // Usa estado do SIP em primeiro lugar; fallback para estado do servidor (AMI)
+  const isInCall     = sip.callState === 'in_call'     || selectedExt?.status === 'in_call';
+  const isRinging    = sip.callState === 'ringing_in'  || selectedExt?.status === 'ringing';
+  const isCallingOut = sip.callState === 'ringing_out';
+  const isPaused     = selectedExt?.status === 'paused';
+
+  const statusCfg = selectedExt ? (STATUS_CONFIG[selectedExt.status as keyof typeof STATUS_CONFIG] || STATUS_CONFIG.offline) : null;
+  const sipCfg = SIP_STATUS_CONFIG[sip.sipStatus];
+  const SipIcon = sipCfg.icon;
+
   const myHistory = useMemo(() => {
     if (!selectedExt) return [];
     return reportCallsByExtension
@@ -71,35 +111,33 @@ export default function AgentView() {
       .slice(0, 8);
   }, [reportCallsByExtension, selectedExt]);
 
-  const handlePause = () => {
-    if (!selectedExtId) return;
-    pauseExtension(selectedExtId, pauseReason);
-  };
-
-  const handleResume = () => {
-    if (!selectedExtId) return;
-    resumeExtension(selectedExtId);
-  };
-
-  const resultIcon = (result) => {
-    if (result === 'atendida') return <Phone size={13} className="text-green-400" />;
-    if (result === 'nao_atendida') return <PhoneMissed size={13} className="text-red-400" />;
-    return <PhoneOff size={13} className="text-zinc-500" />;
-  };
-
-  const totalToday = reportCallsByExtension.filter(
-    (c) => c.extensionId === selectedExt?.id
-  ).length;
-
+  const totalToday = reportCallsByExtension.filter((c) => c.extensionId === selectedExt?.id).length;
   const answeredToday = reportCallsByExtension.filter(
     (c) => c.extensionId === selectedExt?.id && c.result === 'atendida'
   ).length;
+
+  const handlePause  = () => { if (selectedExtId) pauseExtension(selectedExtId, pauseReason); };
+  const handleResume = () => { if (selectedExtId) resumeExtension(selectedExtId); };
+
+  const handleTransferConfirm = () => {
+    if (transferTarget) {
+      sip.transfer(transferTarget);
+      setShowTransferDialog(false);
+      setTransferTarget('');
+    }
+  };
+
+  const resultIcon = (result: string) => {
+    if (result === 'atendida')     return <Phone size={13} className="text-green-400" />;
+    if (result === 'nao_atendida') return <PhoneMissed size={13} className="text-red-400" />;
+    return <PhoneOff size={13} className="text-zinc-500" />;
+  };
 
   return (
     <div className="space-y-4 text-zinc-100 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold tracking-tight">Meu Ramal</h1>
 
-      {/* Seleção de ramal */}
+      {/* Seleção de ramal + status SIP */}
       <Card className="bg-zinc-900 border-zinc-800">
         <CardContent className="pt-5">
           <div className="flex items-center gap-3">
@@ -112,7 +150,7 @@ export default function AgentView() {
                 {extensions.map((ext) => (
                   <SelectItem key={ext.id} value={String(ext.id)} className="text-zinc-100 focus:bg-zinc-700">
                     <span className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ext.status]?.color || 'bg-zinc-500'}`} />
+                      <span className={`w-2 h-2 rounded-full ${STATUS_CONFIG[ext.status as keyof typeof STATUS_CONFIG]?.color || 'bg-zinc-500'}`} />
                       {ext.number} — {ext.name}
                     </span>
                   </SelectItem>
@@ -120,18 +158,24 @@ export default function AgentView() {
               </SelectContent>
             </Select>
 
-            {selectedExt && (
-              <Badge
-                className={`flex-shrink-0 ${
-                  isInCall ? 'bg-green-500/20 text-green-400 border-green-500/30' :
-                  isRinging ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' :
-                  isPaused ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
-                  'bg-zinc-700 text-zinc-300 border-zinc-600'
-                } border`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${statusCfg?.color}`} />
-                {statusCfg?.label}
+            {selectedExt && statusCfg && (
+              <Badge className={`flex-shrink-0 border ${
+                isInCall    ? 'bg-green-500/20 text-green-400 border-green-500/30'  :
+                isRinging   ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'    :
+                isPaused    ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' :
+                'bg-zinc-700 text-zinc-300 border-zinc-600'
+              }`}>
+                <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${statusCfg.color}`} />
+                {statusCfg.label}
               </Badge>
+            )}
+
+            {/* Indicador SIP */}
+            {selectedExtId && (
+              <div className={`flex items-center gap-1.5 text-xs ${sipCfg.color} flex-shrink-0`}>
+                <SipIcon size={13} className={sip.sipStatus === 'connecting' ? 'animate-spin' : ''} />
+                <span className="hidden sm:inline">{sipCfg.label}</span>
+              </div>
             )}
           </div>
         </CardContent>
@@ -139,46 +183,66 @@ export default function AgentView() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         {/* Painel de chamada atual */}
-        <Card className={`bg-zinc-900 border-zinc-800 ${isInCall ? 'border-green-500/40 ring-1 ring-green-500/20' : isRinging ? 'border-blue-500/40 ring-1 ring-blue-500/20' : ''}`}>
+        <Card className={`bg-zinc-900 border-zinc-800 ${
+          isInCall    ? 'border-green-500/40 ring-1 ring-green-500/20'  :
+          isRinging   ? 'border-blue-500/40 ring-1 ring-blue-500/20'   :
+          isCallingOut? 'border-purple-500/40 ring-1 ring-purple-500/20' : ''
+        }`}>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-zinc-300 flex items-center gap-2">
               <PhoneCall size={16} />
-              {isInCall ? 'Chamada em andamento' : isRinging ? 'Chamada recebida' : 'Aguardando chamada'}
+              {isInCall ? 'Chamada em andamento' : isRinging ? 'Chamada recebida' : isCallingOut ? 'Discando...' : 'Aguardando chamada'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+
+            {/* EM LIGAÇÃO */}
             {isInCall && (
               <>
                 <div className="text-center py-4">
+                  {sip.remoteIdentity && (
+                    <p className="text-zinc-300 font-medium mb-1">{sip.remoteIdentity}</p>
+                  )}
                   <div className="w-16 h-16 rounded-full bg-green-500/20 flex items-center justify-center mx-auto mb-3">
                     <Phone size={28} className="text-green-400" />
                   </div>
                   <CallTimer startTime={callStartTime} />
                   <p className="text-zinc-400 text-sm mt-1">tempo de atendimento</p>
                 </div>
-
                 <Separator className="bg-zinc-800" />
-
                 <div className="flex gap-2 justify-center">
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setMicMuted((m) => !m)}
-                    className={`border-zinc-700 gap-2 ${micMuted ? 'text-red-400 border-red-500/40' : 'text-zinc-300'}`}
+                    onClick={sip.toggleMute}
+                    className={`border-zinc-700 gap-2 ${sip.isMuted ? 'text-red-400 border-red-500/40' : 'text-zinc-300'}`}
                   >
-                    {micMuted ? <MicOff size={14} /> : <Mic size={14} />}
-                    {micMuted ? 'Microfone mudo' : 'Microfone ativo'}
+                    {sip.isMuted ? <MicOff size={14} /> : <Mic size={14} />}
+                    {sip.isMuted ? 'Mudo' : 'Microfone'}
                   </Button>
-                  <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-300 gap-2">
-                    <Volume2 size={14} />
-                    Volume
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={sip.toggleHold}
+                    className={`border-zinc-700 gap-2 ${sip.isOnHold ? 'text-amber-400 border-amber-500/40' : 'text-zinc-300'}`}
+                  >
+                    <PauseCircle size={14} />
+                    {sip.isOnHold ? 'Retomar' : 'Espera'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowTransferDialog(true)}
+                    className="border-zinc-700 text-zinc-300 gap-2"
+                  >
+                    <PhoneForwarded size={14} />
+                    Transferir
                   </Button>
                 </div>
-
                 <Button
                   variant="destructive"
                   className="w-full gap-2"
-                  disabled={!selectedExt}
+                  onClick={sip.hangup}
                 >
                   <PhoneOff size={16} />
                   Encerrar chamada
@@ -186,18 +250,22 @@ export default function AgentView() {
               </>
             )}
 
+            {/* CHAMADA RECEBIDA */}
             {isRinging && !isInCall && (
               <div className="text-center py-6">
+                {sip.remoteIdentity && (
+                  <p className="text-blue-300 font-medium mb-1">{sip.remoteIdentity}</p>
+                )}
                 <div className="w-16 h-16 rounded-full bg-blue-500/20 flex items-center justify-center mx-auto mb-3 animate-pulse">
                   <Phone size={28} className="text-blue-400" />
                 </div>
                 <p className="text-blue-400 font-medium">Chamada recebida</p>
                 <div className="flex gap-2 mt-4 justify-center">
-                  <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700">
+                  <Button size="sm" className="gap-2 bg-green-600 hover:bg-green-700" onClick={sip.answer}>
                     <Phone size={14} />
                     Atender
                   </Button>
-                  <Button variant="destructive" size="sm" className="gap-2">
+                  <Button variant="destructive" size="sm" className="gap-2" onClick={sip.hangup}>
                     <PhoneOff size={14} />
                     Rejeitar
                   </Button>
@@ -205,7 +273,22 @@ export default function AgentView() {
               </div>
             )}
 
-            {!isInCall && !isRinging && (
+            {/* DISCANDO */}
+            {isCallingOut && (
+              <div className="text-center py-6">
+                <div className="w-16 h-16 rounded-full bg-purple-500/20 flex items-center justify-center mx-auto mb-3 animate-pulse">
+                  <Phone size={28} className="text-purple-400" />
+                </div>
+                <p className="text-purple-400 font-medium">Discando...</p>
+                <Button variant="destructive" size="sm" className="gap-2 mt-4" onClick={sip.hangup}>
+                  <PhoneOff size={14} />
+                  Cancelar
+                </Button>
+              </div>
+            )}
+
+            {/* AGUARDANDO */}
+            {!isInCall && !isRinging && !isCallingOut && (
               <div className="text-center py-8">
                 <div className="w-16 h-16 rounded-full bg-zinc-800 flex items-center justify-center mx-auto mb-3">
                   <Phone size={28} className="text-zinc-600" />
@@ -220,7 +303,6 @@ export default function AgentView() {
 
         {/* Controle de pausa + métricas do dia */}
         <div className="space-y-4">
-          {/* Pausa */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-zinc-300 flex items-center gap-2">
@@ -290,7 +372,6 @@ export default function AgentView() {
                   <p className="text-xs text-zinc-400 mt-0.5">Atendidas</p>
                 </div>
               </div>
-
               {totalToday > 0 && (
                 <div>
                   <div className="flex justify-between text-xs mb-1 text-zinc-400">
@@ -323,21 +404,21 @@ export default function AgentView() {
                   className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-2">
-                    {resultIcon(call.result)}
+                    {resultIcon(call.result ?? '')}
                     <span className="text-sm">{call.phoneNumber || '—'}</span>
                   </div>
                   <div className="flex items-center gap-3">
                     <Badge
                       variant="outline"
                       className={`text-xs ${
-                        call.result === 'atendida' ? 'text-green-400 border-green-500/30' :
-                        call.result === 'nao_atendida' ? 'text-red-400 border-red-500/30' :
+                        call.result === 'atendida'     ? 'text-green-400 border-green-500/30' :
+                        call.result === 'nao_atendida' ? 'text-red-400 border-red-500/30'    :
                         'text-zinc-400 border-zinc-700'
                       }`}
                     >
-                      {call.result === 'atendida' ? 'Atendida' :
-                       call.result === 'nao_atendida' ? 'Não atendida' :
-                       call.result === 'numero_nao_existe' ? 'Inválido' : call.result}
+                      {call.result === 'atendida'          ? 'Atendida'     :
+                       call.result === 'nao_atendida'       ? 'Não atendida' :
+                       call.result === 'numero_nao_existe'  ? 'Inválido'     : call.result}
                     </Badge>
                     {call.createdAt && (
                       <span className="text-xs text-zinc-500">
@@ -355,6 +436,34 @@ export default function AgentView() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog de transferência */}
+      <Dialog open={showTransferDialog} onOpenChange={setShowTransferDialog}>
+        <DialogContent className="bg-zinc-900 border-zinc-800 text-zinc-100">
+          <DialogHeader>
+            <DialogTitle>📞 Transferir chamada</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-zinc-400">Digite o ramal de destino:</p>
+            <input
+              value={transferTarget}
+              onChange={(e) => setTransferTarget(e.target.value)}
+              placeholder="ex: 1002"
+              className="w-full rounded-md border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+              onKeyDown={(e) => e.key === 'Enter' && handleTransferConfirm()}
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" className="border-zinc-700 text-zinc-400" onClick={() => setShowTransferDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleTransferConfirm} disabled={!transferTarget}>
+              Transferir
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -116,8 +116,8 @@ export default function CallCenter() {
 
   const sortedExtensions = useMemo(() =>
     [...extensions].sort((a, b) => {
-      const order = { in_call: 0, ringing: 1, in_campaign: 2, online: 3, paused: 4, offline: 5 };
-      return (order[a.status] ?? 9) - (order[b.status] ?? 9);
+      const order: Record<string, number> = { in_call: 0, ringing: 1, in_campaign: 2, online: 3, paused: 4, offline: 5 };
+      return (order[a.status ?? ''] ?? 9) - (order[b.status ?? ''] ?? 9);
     }),
     [extensions]
   );

@@ -24,6 +24,7 @@ services:
     ports:
       - "5038:5038"
       - "5060:5060/udp"
+      - "8088:8088"          # WebSocket para softphone WebRTC no browser
       # Portas RTP para mídia de áudio (necessário para softphones fora do container)
       - "10000-10099:10000-10099/udp"
     environment:
@@ -58,6 +59,7 @@ services:
       AMI_PASSWORD: ${AMI_PASSWORD:-admin}
       ASTERISK_SIP_CUSTOM_FILE: ${ASTERISK_SIP_CUSTOM_FILE:-/asterisk-config/sip_custom.conf}
       ASTERISK_PJSIP_CUSTOM_FILE: ${ASTERISK_PJSIP_CUSTOM_FILE:-/asterisk-config/pjsip_custom.conf}
+      ASTERISK_WS_URL: ${ASTERISK_WS_URL:-ws://localhost:8088/ws}
       ASTERISK_RECORDINGS_DIR: ${ASTERISK_RECORDINGS_DIR:-/asterisk-recordings}
       ASTERISK_SOUNDS_DIR: ${ASTERISK_SOUNDS_DIR:-/asterisk-sounds}
     ports:

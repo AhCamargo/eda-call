@@ -16,8 +16,38 @@ if [ ! -f /etc/asterisk-custom/extensions_custom.conf ]; then
   touch /etc/asterisk-custom/extensions_custom.conf
 fi
 
+if [ ! -f /etc/asterisk-custom/pjsip_custom.conf ]; then
+  touch /etc/asterisk-custom/pjsip_custom.conf
+fi
+
+if [ ! -f /etc/asterisk-custom/queues_custom.conf ]; then
+  touch /etc/asterisk-custom/queues_custom.conf
+fi
+
 if [ -f /etc/asterisk-custom/manager.conf ]; then
   cp /etc/asterisk-custom/manager.conf /etc/asterisk/manager.conf
+fi
+
+# Copia http.conf para habilitar servidor HTTP/WebSocket (WebRTC)
+if [ -f /etc/asterisk-custom/http.conf ]; then
+  cp /etc/asterisk-custom/http.conf /etc/asterisk/http.conf
+fi
+
+# Copia pjsip_base.conf como pjsip.conf (ponto de entrada do PJSIP)
+if [ -f /etc/asterisk-custom/pjsip_base.conf ]; then
+  cp /etc/asterisk-custom/pjsip_base.conf /etc/asterisk/pjsip.conf
+fi
+
+# Garante que rtp.conf tem o range correto para os ports expostos no Docker
+cat > /etc/asterisk/rtp_runtime.conf << 'RTPEOF'
+[general]
+rtpstart=10000
+rtpend=10099
+RTPEOF
+if [ -f /etc/asterisk/rtp.conf ]; then
+  if ! grep -q "rtp_runtime.conf" /etc/asterisk/rtp.conf; then
+    printf "\n#include /etc/asterisk/rtp_runtime.conf\n" >> /etc/asterisk/rtp.conf
+  fi
 fi
 
 if [ -f /etc/asterisk/sip.conf ]; then
@@ -32,20 +62,28 @@ if [ -f /etc/asterisk/extensions.conf ]; then
   fi
 fi
 
+if [ -f /etc/asterisk/queues.conf ]; then
+  if ! grep -q "#include /etc/asterisk-custom/queues_custom.conf" /etc/asterisk/queues.conf; then
+    printf "\n#include /etc/asterisk-custom/queues_custom.conf\n" >> /etc/asterisk/queues.conf
+  fi
+fi
+
 mkdir -p /var/lib/asterisk/sounds/custom
 
 generate_prompt() {
   output_file="$1"
   text="$2"
+  ulaw_file="${output_file%.wav}.ulaw"
 
-  if [ -f "$output_file" ]; then
+  if [ -f "$output_file" ] && [ -f "$ulaw_file" ]; then
     return 0
   fi
 
   if command -v espeak-ng >/dev/null 2>&1 && command -v sox >/dev/null 2>&1; then
     tmp_file="${output_file}.tmp.wav"
     espeak-ng -v pt-br -s 145 -w "$tmp_file" "$text"
-    sox "$tmp_file" -r 8000 -c 1 -b 16 "$output_file"
+    sox "$tmp_file" -r 8000 -c 1 -b 16 -e signed-integer "$output_file"
+    sox "$tmp_file" -r 8000 -c 1 -e u-law -b 8 -t ul "$ulaw_file"
     rm -f "$tmp_file"
   fi
 }

@@ -1,53 +1,106 @@
-import { useEffect, useMemo, useState } from 'react';
-import api from '../api';
-import { usePbx } from '../context/PbxContext';
+import { useEffect, useMemo, useState } from "react";
+import api from "../api";
+import { usePbx } from "../context/PbxContext";
+import type { Extension } from "../types";
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter
-} from '@/components/ui/dialog';
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
-} from '@/components/ui/select';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 import {
-  Users, Phone, PhoneMissed, Headphones, MessageSquare, PhoneForwarded,
-  Pause, Play, RefreshCw, Shield, Activity
-} from 'lucide-react';
+  Users,
+  Phone,
+  PhoneMissed,
+  Headphones,
+  MessageSquare,
+  PhoneForwarded,
+  Pause,
+  Play,
+  RefreshCw,
+  Shield,
+  Activity,
+} from "lucide-react";
 
 const STATUS_CONFIG = {
-  online:      { label: 'Online',       dot: 'bg-emerald-500', badge: 'text-emerald-400 border-emerald-500/30'  },
-  offline:     { label: 'Offline',      dot: 'bg-zinc-500',    badge: 'text-zinc-400 border-zinc-600'           },
-  paused:      { label: 'Em pausa',     dot: 'bg-amber-500',   badge: 'text-amber-400 border-amber-500/30'      },
-  ringing:     { label: 'Tocando',      dot: 'bg-blue-400',    badge: 'text-blue-400 border-blue-500/30'        },
-  in_call:     { label: 'Em ligação',   dot: 'bg-green-400',   badge: 'text-green-400 border-green-500/30'      },
-  in_campaign: { label: 'Em campanha',  dot: 'bg-purple-400',  badge: 'text-purple-400 border-purple-500/30'    },
+  online: {
+    label: "Online",
+    dot: "bg-emerald-500",
+    badge: "text-emerald-400 border-emerald-500/30",
+  },
+  offline: {
+    label: "Offline",
+    dot: "bg-zinc-500",
+    badge: "text-zinc-400 border-zinc-600",
+  },
+  paused: {
+    label: "Em pausa",
+    dot: "bg-amber-500",
+    badge: "text-amber-400 border-amber-500/30",
+  },
+  ringing: {
+    label: "Tocando",
+    dot: "bg-blue-400",
+    badge: "text-blue-400 border-blue-500/30",
+  },
+  in_call: {
+    label: "Em ligação",
+    dot: "bg-green-400",
+    badge: "text-green-400 border-green-500/30",
+  },
+  in_campaign: {
+    label: "Em campanha",
+    dot: "bg-purple-400",
+    badge: "text-purple-400 border-purple-500/30",
+  },
 };
 
 const PAUSE_REASONS = [
-  'Pausa administrativa',
-  'Almoço',
-  'Reunião',
-  'Suporte Técnico',
-  'Treinamento',
+  "Pausa administrativa",
+  "Almoço",
+  "Reunião",
+  "Suporte Técnico",
+  "Treinamento",
 ];
 
 function AgentCard({ agent, onAction }) {
   const cfg = STATUS_CONFIG[agent.status] || STATUS_CONFIG.offline;
-  const isActive = agent.status === 'in_call' || agent.status === 'ringing';
+  const isActive = agent.status === "in_call" || agent.status === "ringing";
 
   return (
-    <Card className={`bg-zinc-900 border-zinc-800 transition-all ${isActive ? 'ring-1 ring-green-500/30' : ''}`}>
+    <Card
+      className={`bg-zinc-900 border-zinc-800 transition-all ${isActive ? "ring-1 ring-green-500/30" : ""}`}
+    >
       <CardContent className="pt-4 pb-3">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2.5">
-            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot} ${isActive ? 'animate-pulse' : ''}`} />
+            <span
+              className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${cfg.dot} ${isActive ? "animate-pulse" : ""}`}
+            />
             <div>
-              <p className="text-sm font-semibold leading-tight">{agent.name}</p>
+              <p className="text-sm font-semibold leading-tight">
+                {agent.name}
+              </p>
               <p className="text-xs text-zinc-500">{agent.number}</p>
             </div>
           </div>
@@ -77,13 +130,15 @@ function AgentCard({ agent, onAction }) {
                   variant="outline"
                   className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-blue-400 hover:border-blue-500/40 hover:bg-blue-500/10 text-xs"
                   disabled={!isActive}
-                  onClick={() => onAction('listen', agent)}
+                  onClick={() => onAction("listen", agent)}
                 >
                   <Headphones size={12} />
                   Escutar
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Escutar a chamada sem que o agente saiba</TooltipContent>
+              <TooltipContent>
+                Escutar a chamada sem que o agente saiba
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -93,13 +148,15 @@ function AgentCard({ agent, onAction }) {
                   variant="outline"
                   className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-purple-400 hover:border-purple-500/40 hover:bg-purple-500/10 text-xs"
                   disabled={!isActive}
-                  onClick={() => onAction('whisper', agent)}
+                  onClick={() => onAction("whisper", agent)}
                 >
                   <MessageSquare size={12} />
                   Sussurrar
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Falar com o agente sem que o cliente ouça</TooltipContent>
+              <TooltipContent>
+                Falar com o agente sem que o cliente ouça
+              </TooltipContent>
             </Tooltip>
 
             <Tooltip>
@@ -109,7 +166,7 @@ function AgentCard({ agent, onAction }) {
                   variant="outline"
                   className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 text-xs"
                   disabled={!isActive}
-                  onClick={() => onAction('takeover', agent)}
+                  onClick={() => onAction("takeover", agent)}
                 >
                   <PhoneForwarded size={12} />
                   Assumir
@@ -121,12 +178,12 @@ function AgentCard({ agent, onAction }) {
         </div>
 
         <div className="flex gap-1.5 mt-1.5">
-          {agent.status !== 'paused' ? (
+          {agent.status !== "paused" ? (
             <Button
               size="sm"
               variant="outline"
               className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-amber-400 hover:border-amber-500/40 text-xs"
-              onClick={() => onAction('pause', agent)}
+              onClick={() => onAction("pause", agent)}
             >
               <Pause size={12} />
               Pausar
@@ -136,7 +193,7 @@ function AgentCard({ agent, onAction }) {
               size="sm"
               variant="outline"
               className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-green-400 hover:border-green-500/40 text-xs"
-              onClick={() => onAction('resume', agent)}
+              onClick={() => onAction("resume", agent)}
             >
               <Play size={12} />
               Retornar
@@ -150,22 +207,32 @@ function AgentCard({ agent, onAction }) {
 
 export default function SupervisorView() {
   const { statusCounts, extensions, fetchAll } = usePbx();
-  const [actionDialog, setActionDialog] = useState(null); // { type, agent }
+  const [actionDialog, setActionDialog] = useState<{
+    type: string;
+    agent: Extension;
+  } | null>(null);
   const [pauseReason, setPauseReason] = useState(PAUSE_REASONS[0]);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [feedback, setFeedback] = useState<{
+    msg: string;
+    type: string;
+  } | null>(null);
 
-  const showFeedback = (msg, type = 'ok') => {
+  const showFeedback = (msg, type = "ok") => {
     setFeedback({ msg, type });
     setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleAction = (type, agent) => {
-    if (type === 'resume') {
+    if (type === "resume") {
       setLoading(true);
-      api.post(`/supervisor/agents/${agent.id}/resume`)
-        .then(() => { fetchAll(); showFeedback(`${agent.name} retomou atendimento`); })
-        .catch(() => showFeedback('Erro ao retomar agente', 'error'))
+      api
+        .post(`/supervisor/agents/${agent.id}/resume`)
+        .then(() => {
+          fetchAll();
+          showFeedback(`${agent.name} retomou atendimento`);
+        })
+        .catch(() => showFeedback("Erro ao retomar agente", "error"))
         .finally(() => setLoading(false));
       return;
     }
@@ -173,22 +240,31 @@ export default function SupervisorView() {
   };
 
   const confirmAction = async () => {
+    if (!actionDialog) return;
     const { type, agent } = actionDialog;
     setLoading(true);
     try {
-      if (type === 'pause') {
-        await api.post(`/supervisor/agents/${agent.id}/force-pause`, { reason: pauseReason });
+      if (type === "pause") {
+        await api.post(`/supervisor/agents/${agent.id}/force-pause`, {
+          reason: pauseReason,
+        });
         await fetchAll();
         showFeedback(`${agent.name} colocado em pausa`);
-      } else if (type === 'listen') {
-        showFeedback(`Iniciando escuta do ramal ${agent.number}... (requer configuração Asterisk ChanSpy)`);
-      } else if (type === 'whisper') {
-        showFeedback(`Sussurrando para ${agent.name}... (requer configuração Asterisk ChanSpy)`);
-      } else if (type === 'takeover') {
-        showFeedback(`Assumindo chamada de ${agent.name}... (requer configuração Asterisk)`);
+      } else if (type === "listen") {
+        showFeedback(
+          `Iniciando escuta do ramal ${agent.number}... (requer configuração Asterisk ChanSpy)`,
+        );
+      } else if (type === "whisper") {
+        showFeedback(
+          `Sussurrando para ${agent.name}... (requer configuração Asterisk ChanSpy)`,
+        );
+      } else if (type === "takeover") {
+        showFeedback(
+          `Assumindo chamada de ${agent.name}... (requer configuração Asterisk)`,
+        );
       }
     } catch {
-      showFeedback('Erro ao executar ação', 'error');
+      showFeedback("Erro ao executar ação", "error");
     } finally {
       setLoading(false);
       setActionDialog(null);
@@ -196,16 +272,43 @@ export default function SupervisorView() {
   };
 
   // Agentes separados por status
-  const activeCalls = useMemo(() => extensions.filter((e) => e.status === 'in_call' || e.status === 'ringing'), [extensions]);
-  const onlineAgents = useMemo(() => extensions.filter((e) => e.status === 'online'), [extensions]);
-  const pausedAgents = useMemo(() => extensions.filter((e) => e.status === 'paused'), [extensions]);
-  const offlineAgents = useMemo(() => extensions.filter((e) => e.status === 'offline'), [extensions]);
+  const activeCalls = useMemo(
+    () =>
+      extensions.filter(
+        (e) => e.status === "in_call" || e.status === "ringing",
+      ),
+    [extensions],
+  );
+  const onlineAgents = useMemo(
+    () => extensions.filter((e) => e.status === "online"),
+    [extensions],
+  );
+  const pausedAgents = useMemo(
+    () => extensions.filter((e) => e.status === "paused"),
+    [extensions],
+  );
+  const offlineAgents = useMemo(
+    () => extensions.filter((e) => e.status === "offline"),
+    [extensions],
+  );
 
   const DIALOG_LABELS = {
-    listen:   { title: '🎧 Escutar chamada',     desc: 'Você irá escutar a chamada sem que o agente ou cliente saibam.' },
-    whisper:  { title: '🗣 Sussurrar para agente', desc: 'Somente o agente ouvirá você. O cliente não saberá.' },
-    takeover: { title: '📞 Assumir chamada',      desc: 'A chamada será transferida para você. O agente será desconectado.' },
-    pause:    { title: '⏸ Forçar pausa',          desc: 'O agente será colocado em pausa pelo supervisor.' },
+    listen: {
+      title: "🎧 Escutar chamada",
+      desc: "Você irá escutar a chamada sem que o agente ou cliente saibam.",
+    },
+    whisper: {
+      title: "🗣 Sussurrar para agente",
+      desc: "Somente o agente ouvirá você. O cliente não saberá.",
+    },
+    takeover: {
+      title: "📞 Assumir chamada",
+      desc: "A chamada será transferida para você. O agente será desconectado.",
+    },
+    pause: {
+      title: "⏸ Forçar pausa",
+      desc: "O agente será colocado em pausa pelo supervisor.",
+    },
   };
 
   return (
@@ -224,11 +327,13 @@ export default function SupervisorView() {
 
       {/* Feedback toast */}
       {feedback && (
-        <div className={`text-sm px-4 py-2.5 rounded-lg border ${
-          feedback.type === 'error'
-            ? 'bg-red-500/10 border-red-500/30 text-red-400'
-            : 'bg-green-500/10 border-green-500/30 text-green-400'
-        }`}>
+        <div
+          className={`text-sm px-4 py-2.5 rounded-lg border ${
+            feedback.type === "error"
+              ? "bg-red-500/10 border-red-500/30 text-red-400"
+              : "bg-green-500/10 border-green-500/30 text-green-400"
+          }`}
+        >
           {feedback.msg}
         </div>
       )}
@@ -236,10 +341,30 @@ export default function SupervisorView() {
       {/* KPIs rápidos */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: 'Em ligação', value: activeCalls.length, color: 'text-green-400', icon: Phone },
-          { label: 'Online', value: onlineAgents.length, color: 'text-emerald-400', icon: Activity },
-          { label: 'Em pausa', value: pausedAgents.length, color: 'text-amber-400', icon: Pause },
-          { label: 'Offline', value: offlineAgents.length, color: 'text-zinc-500', icon: PhoneMissed },
+          {
+            label: "Em ligação",
+            value: activeCalls.length,
+            color: "text-green-400",
+            icon: Phone,
+          },
+          {
+            label: "Online",
+            value: onlineAgents.length,
+            color: "text-emerald-400",
+            icon: Activity,
+          },
+          {
+            label: "Em pausa",
+            value: pausedAgents.length,
+            color: "text-amber-400",
+            icon: Pause,
+          },
+          {
+            label: "Offline",
+            value: offlineAgents.length,
+            color: "text-zinc-500",
+            icon: PhoneMissed,
+          },
         ].map((kpi) => (
           <Card key={kpi.label} className="bg-zinc-900 border-zinc-800">
             <CardContent className="pt-4 pb-3 flex items-center gap-3">
@@ -328,25 +453,41 @@ export default function SupervisorView() {
           {actionDialog && (
             <>
               <DialogHeader>
-                <DialogTitle>{DIALOG_LABELS[actionDialog.type]?.title}</DialogTitle>
+                <DialogTitle>
+                  {DIALOG_LABELS[actionDialog.type]?.title}
+                </DialogTitle>
               </DialogHeader>
               <div className="py-2 space-y-3">
                 <p className="text-sm text-zinc-400">
                   {DIALOG_LABELS[actionDialog.type]?.desc}
                 </p>
                 <div className="bg-zinc-800 rounded-lg p-3">
-                  <p className="text-sm font-medium">{actionDialog.agent.name}</p>
-                  <p className="text-xs text-zinc-500">{actionDialog.agent.number} · {STATUS_CONFIG[actionDialog.agent.status]?.label}</p>
+                  <p className="text-sm font-medium">
+                    {actionDialog.agent.name}
+                  </p>
+                  <p className="text-xs text-zinc-500">
+                    {actionDialog.agent.number} ·{" "}
+                    {
+                      STATUS_CONFIG[actionDialog.agent.status ?? "offline"]
+                        ?.label
+                    }
+                  </p>
                 </div>
 
-                {actionDialog.type === 'pause' && (
+                {actionDialog.type === "pause" && (
                   <Select value={pauseReason} onValueChange={setPauseReason}>
                     <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-zinc-800 border-zinc-700">
                       {PAUSE_REASONS.map((r) => (
-                        <SelectItem key={r} value={r} className="text-zinc-100 focus:bg-zinc-700">{r}</SelectItem>
+                        <SelectItem
+                          key={r}
+                          value={r}
+                          className="text-zinc-100 focus:bg-zinc-700"
+                        >
+                          {r}
+                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -364,12 +505,16 @@ export default function SupervisorView() {
                   onClick={confirmAction}
                   disabled={loading}
                   className={
-                    actionDialog.type === 'takeover' ? 'bg-orange-600 hover:bg-orange-700' :
-                    actionDialog.type === 'pause' ? 'bg-amber-600 hover:bg-amber-700' :
-                    'bg-primary hover:bg-primary/90'
+                    actionDialog.type === "takeover"
+                      ? "bg-orange-600 hover:bg-orange-700"
+                      : actionDialog.type === "pause"
+                        ? "bg-amber-600 hover:bg-amber-700"
+                        : "bg-primary hover:bg-primary/90"
                   }
                 >
-                  {loading ? <RefreshCw size={14} className="animate-spin mr-1" /> : null}
+                  {loading ? (
+                    <RefreshCw size={14} className="animate-spin mr-1" />
+                  ) : null}
                   Confirmar
                 </Button>
               </DialogFooter>

@@ -57,7 +57,7 @@ const CampanhaForm: FC<CampanhaFormProps> = ({
         <TextField
           type="number"
           label="Intervalo (s)"
-          min="1"
+          slotProps={{ htmlInput: { min: 1 } }}
           value={form.intervalSeconds}
           onChange={(e) =>
             setForm((prev) => ({ ...prev, intervalSeconds: e.target.value }))

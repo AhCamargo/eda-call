@@ -46,15 +46,58 @@ export const VoipLine = sequelize.define("VoipLine", {
   secret: { type: DataTypes.STRING, allowNull: false },
   host: { type: DataTypes.STRING, allowNull: false },
   port: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 5060 },
+  // Contexto para ramais que discam por esta linha (outbound)
   context: {
     type: DataTypes.STRING,
     allowNull: false,
     defaultValue: "default",
   },
+  // Contexto para chamadas que entram por esta linha (inbound / URA receptiva)
+  inboundContext: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null,
+  },
   transport: {
     type: DataTypes.STRING,
     allowNull: false,
     defaultValue: "transport-udp",
+  },
+  // Tipo do peer SIP: peer (só recebe/envia), friend (bidirecional), user (só registra)
+  type: {
+    type: DataTypes.ENUM("peer", "friend", "user"),
+    allowNull: false,
+    defaultValue: "peer",
+  },
+  // Modo DTMF: rfc2833 (padrão) ou inband
+  dtmfmode: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "rfc2833",
+  },
+  // fromdomain: para provedores que exigem (ex: sip1.voztel.com.br)
+  fromdomain: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: null,
+  },
+  // Codecs suportados, separados por vírgula (ex: "ulaw,alaw" ou "g729,ulaw")
+  codecs: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "ulaw,alaw",
+  },
+  // Limite de chamadas simultâneas (0 = ilimitado)
+  callLimit: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 0,
+  },
+  // insecure: para troncos que não fazem registro (invite,port) ou exigem autenticação
+  insecure: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: "invite,port",
   },
 });
 
@@ -270,6 +313,88 @@ UraReverseContact.belongsTo(UraReverseCampaign, {
   foreignKey: "campaignId",
 });
 
+// ── Filas (Asterisk Queues) ──────────────────────────────────
+
+export const AsteriskQueue = sequelize.define("AsteriskQueue", {
+  name: { type: DataTypes.STRING, allowNull: false, unique: true },
+  strategy: {
+    type: DataTypes.ENUM(
+      "ringall", "roundrobin", "leastrecent", "fewestcalls",
+      "random", "rrmemory", "linear", "wrandom",
+    ),
+    allowNull: false,
+    defaultValue: "ringall",
+  },
+  timeout: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 30 },
+  maxlen: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  wrapuptime: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  musiconhold: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+  announce: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+});
+
+export const AsteriskQueueMember = sequelize.define("AsteriskQueueMember", {
+  extensionNumber: { type: DataTypes.STRING, allowNull: false },
+  penalty: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+});
+
+AsteriskQueue.hasMany(AsteriskQueueMember, {
+  as: "members",
+  foreignKey: "queueId",
+  onDelete: "CASCADE",
+});
+AsteriskQueueMember.belongsTo(AsteriskQueue, { foreignKey: "queueId" });
+
+// ── Central Telefônica (URA Receptiva) ───────────────────────
+
+export const InboundIvr = sequelize.define("InboundIvr", {
+  name: { type: DataTypes.STRING, allowNull: false },
+  contextName: { type: DataTypes.STRING, allowNull: false, unique: true },
+  voipLineId: { type: DataTypes.INTEGER, allowNull: true },
+  audioFile: { type: DataTypes.STRING, allowNull: true },
+  digitTimeoutSeconds: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 5,
+  },
+  maxInvalidAttempts: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    defaultValue: 3,
+  },
+  fallbackExtension: { type: DataTypes.STRING, allowNull: true },
+  fallbackLabel: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: "Transbordo",
+  },
+  dialTechnology: {
+    type: DataTypes.ENUM("SIP", "PJSIP"),
+    allowNull: false,
+    defaultValue: "SIP",
+  },
+});
+
+export const InboundIvrOption = sequelize.define("InboundIvrOption", {
+  keyDigit: { type: DataTypes.STRING(1), allowNull: false },
+  label: { type: DataTypes.STRING, allowNull: true },
+  actionType: {
+    type: DataTypes.ENUM("transfer_extension", "hangup"),
+    allowNull: false,
+    defaultValue: "transfer_extension",
+  },
+  targetExtension: { type: DataTypes.STRING, allowNull: true },
+});
+
+InboundIvr.hasMany(InboundIvrOption, {
+  as: "options",
+  foreignKey: "ivrId",
+  onDelete: "CASCADE",
+});
+InboundIvrOption.belongsTo(InboundIvr, { foreignKey: "ivrId" });
+
+VoipLine.hasMany(InboundIvr, { foreignKey: "voipLineId" });
+InboundIvr.belongsTo(VoipLine, { foreignKey: "voipLineId" });
+
 export const syncDatabase = async () => {
   await sequelize.authenticate();
   await sequelize
@@ -363,6 +488,38 @@ export const syncDatabase = async () => {
       'ALTER TABLE "UraLogs" ADD COLUMN IF NOT EXISTS "uraRef" VARCHAR(255)',
     )
     .catch(() => {});
+  // VoipLines columns added after initial schema
+  await sequelize
+    .query(
+      `DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='inboundContext') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "inboundContext" VARCHAR(255) DEFAULT NULL;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='transport') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "transport" VARCHAR(255) NOT NULL DEFAULT 'transport-udp';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='type') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "type" VARCHAR(50) NOT NULL DEFAULT 'peer';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='dtmfmode') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "dtmfmode" VARCHAR(255) NOT NULL DEFAULT 'rfc2833';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='fromdomain') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "fromdomain" VARCHAR(255) DEFAULT NULL;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='codecs') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "codecs" VARCHAR(255) NOT NULL DEFAULT 'ulaw,alaw';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='callLimit') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "callLimit" INTEGER NOT NULL DEFAULT 0;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='insecure') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "insecure" VARCHAR(255) DEFAULT 'invite,port';
+        END IF;
+      END $$;`,
+    )
+    .catch(() => {});
   await sequelize
     .query(
       `CREATE TABLE IF NOT EXISTS "UraReverseCampaigns" (
@@ -428,6 +585,76 @@ export const syncDatabase = async () => {
   await sequelize
     .query(
       'ALTER TABLE "UraReverseContacts" ADD COLUMN IF NOT EXISTS "recordingPath" VARCHAR(255)',
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "InboundIvrs" (
+        "id" SERIAL,
+        "name" VARCHAR(255) NOT NULL,
+        "contextName" VARCHAR(255) NOT NULL UNIQUE,
+        "voipLineId" INTEGER REFERENCES "VoipLines" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+        "audioFile" VARCHAR(255),
+        "digitTimeoutSeconds" INTEGER NOT NULL DEFAULT 5,
+        "maxInvalidAttempts" INTEGER NOT NULL DEFAULT 3,
+        "fallbackExtension" VARCHAR(255),
+        "fallbackLabel" VARCHAR(255) DEFAULT 'Transbordo',
+        "dialTechnology" VARCHAR(10) NOT NULL DEFAULT 'SIP',
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "InboundIvrOptions" (
+        "id" SERIAL,
+        "keyDigit" VARCHAR(1) NOT NULL,
+        "label" VARCHAR(255),
+        "actionType" VARCHAR(50) NOT NULL DEFAULT 'transfer_extension',
+        "targetExtension" VARCHAR(255),
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "ivrId" INTEGER REFERENCES "InboundIvrs" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "AsteriskQueues" (
+        "id" SERIAL,
+        "name" VARCHAR(255) NOT NULL UNIQUE,
+        "strategy" VARCHAR(50) NOT NULL DEFAULT 'ringall',
+        "timeout" INTEGER NOT NULL DEFAULT 30,
+        "maxlen" INTEGER NOT NULL DEFAULT 0,
+        "wrapuptime" INTEGER NOT NULL DEFAULT 0,
+        "musiconhold" VARCHAR(255) DEFAULT NULL,
+        "announce" VARCHAR(255) DEFAULT NULL,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "AsteriskQueueMembers" (
+        "id" SERIAL,
+        "extensionNumber" VARCHAR(255) NOT NULL,
+        "penalty" INTEGER NOT NULL DEFAULT 0,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "queueId" INTEGER REFERENCES "AsteriskQueues" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
+  // add transfer_queue to InboundIvrOptions actionType enum
+  await sequelize
+    .query(
+      `ALTER TYPE "enum_InboundIvrOptions_actionType" ADD VALUE IF NOT EXISTS 'transfer_queue'`,
     )
     .catch(() => {});
   await sequelize.sync();

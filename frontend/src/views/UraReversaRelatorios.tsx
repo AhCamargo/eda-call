@@ -9,9 +9,24 @@ import {
 } from '@/components/ui/table';
 import { Download, BarChart2 } from 'lucide-react';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
 
-const statusVariant = (s) => {
+interface UraReportContact {
+  id: string | number;
+  phoneNumber?: string;
+  recordingPath?: string;
+  status?: string;
+}
+interface UraReportItem {
+  id: string | number;
+  name: string;
+  status?: string;
+  VoipLine?: { name?: string };
+  stats?: { calling?: number; answered?: number; no_answer?: number; invalid?: number; busy?: number };
+  contacts?: UraReportContact[];
+}
+
+const statusVariant = (s: string) => {
   if (s === 'running') return 'default';
   if (s === 'paused') return 'secondary';
   if (s === 'finished') return 'outline';
@@ -25,7 +40,7 @@ const resolveRecordingUrl = (path) => {
 };
 
 export default function UraReversaRelatorios() {
-  const [items, setItems] = useState([]);
+  const [items, setItems] = useState<UraReportItem[]>([]);
 
   useEffect(() => {
     api.get('/reports/ura-reverse').then((res) => setItems(res.data || [])).catch(() => {});
@@ -71,7 +86,7 @@ export default function UraReversaRelatorios() {
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
                       <TableCell>
-                        <Badge variant={statusVariant(item.status)}>{item.status || '—'}</Badge>
+                        <Badge variant={statusVariant(item.status ?? '')}>{item.status || '—'}</Badge>
                       </TableCell>
                       <TableCell>{item.VoipLine?.name || '—'}</TableCell>
                       <TableCell className="text-center">{item.stats?.calling || 0}</TableCell>

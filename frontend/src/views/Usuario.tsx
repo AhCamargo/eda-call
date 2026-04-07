@@ -43,7 +43,7 @@ export default function Usuario() {
   const [selectedId, setSelectedId] = useState('');
   const [pauseReason, setPauseReason] = useState(PAUSE_OPTIONS[0].value);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState(null);
+  const [feedback, setFeedback] = useState<{ type: string; message: string } | null>(null);
 
   const selected = useMemo(
     () => extensions.find((e) => String(e.id) === selectedId),

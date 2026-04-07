@@ -20,6 +20,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   PhoneOutgoing,
+  Building2,
+  ListFilter,
 } from "lucide-react";
 
 const EXPANDED: number = 240;
@@ -196,6 +198,24 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
     ];
   }, [role, t]);
 
+  const centralItems = useMemo<NavItem[]>(() => {
+    if (role === "agent") return [];
+    return [
+      {
+        to: "/central-telefonica",
+        label: "Central Telefônica",
+        icon: Building2,
+        iconColor: "#34d399",
+      },
+      {
+        to: "/filas",
+        label: "Filas",
+        icon: ListFilter,
+        iconColor: "#34d399",
+      },
+    ];
+  }, [role]);
+
   const campaignItems = useMemo<NavItem[]>(() => {
     if (role === "agent") return [];
     return [
@@ -262,6 +282,15 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
           {mainItems.map((item) => (
             <NavItem key={item.to} {...item} collapsed={collapsed} />
           ))}
+
+          {centralItems.length > 0 && (
+            <>
+              <SectionLabel label="Central" collapsed={collapsed} />
+              {centralItems.map((item) => (
+                <NavItem key={item.to} {...item} collapsed={collapsed} />
+              ))}
+            </>
+          )}
 
           {campaignItems.length > 0 && (
             <>

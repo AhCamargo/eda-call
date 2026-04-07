@@ -33,7 +33,9 @@ export interface Extension {
   name: string;
   sipPassword?: string;
   voipLineId?: string;
+  voipLine?: string;
   status?: string;
+  pauseReason?: string;
 }
 
 export interface CreateExtensionPayload {
@@ -48,11 +50,18 @@ export interface VoipLine {
   id: string;
   name: string;
   username: string;
-  secret: string;
+  secret?: string;
   host: string;
   port: number;
   context: string;
+  inboundContext?: string;
   transport: string;
+  type?: string;
+  dtmfmode?: string;
+  fromdomain?: string;
+  codecs?: string;
+  callLimit?: number;
+  insecure?: string;
 }
 
 export interface CreateVoipLinePayload {
@@ -62,15 +71,50 @@ export interface CreateVoipLinePayload {
   host: string;
   port: number;
   context: string;
+  inboundContext?: string;
   transport: string;
+  type?: string;
+  dtmfmode?: string;
+  fromdomain?: string;
+  codecs?: string;
+  callLimit?: number;
+  insecure?: string;
 }
 
 // Campaign
+export interface CampaignContact {
+  id: string;
+  phoneNumber: string;
+  status?: string;
+}
+export interface CampaignVoipLine {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+}
+export interface CampaignExtension {
+  id: string;
+  number: string;
+  name: string;
+}
+export interface CampaignStats {
+  totalContacts: number;
+  totalCalls: number;
+  atendida: number;
+  nao_atendida: number;
+  numero_nao_existe: number;
+  rejeitada: number;
+}
 export interface Campaign {
   id: string;
   name: string;
   intervalSeconds: number;
   status?: string;
+  contacts?: CampaignContact[];
+  voipLines?: CampaignVoipLine[];
+  extensions?: CampaignExtension[];
+  description?: string;
 }
 
 export interface CreateCampaignPayload {
@@ -86,18 +130,29 @@ export interface ReportSummary {
 
 export interface CallLogEntry {
   id: string;
-  direction: string;
-  source: string;
-  destination: string;
-  duration: number;
-  status: string;
-  timestamp: string;
+  direction?: string;
+  source?: string;
+  destination?: string;
+  duration?: number;
+  status?: string;
+  timestamp?: string;
+  // Campos retornados pelo backend
+  extensionId?: string;
+  phoneNumber?: string;
+  result?: string;
+  createdAt?: string;
+  Extension?: { id: string; number?: string; name?: string };
+  Campaign?: { id: string; name?: string };
 }
 
 export interface UraLog {
   id: string;
   option: string;
   count: number;
+  phoneNumber?: string;
+  selectedOption?: string;
+  result?: string;
+  createdAt?: string;
 }
 
 export interface Recording {
@@ -106,6 +161,14 @@ export interface Recording {
   extension: string;
   duration: number;
   timestamp: string;
+  // Extended fields returned by backend
+  extensionId?: string;
+  filePath?: string;
+  callUniqueId?: string;
+  durationSeconds?: number;
+  createdAt?: string;
+  webPath?: string;
+  Extension?: { id: string; number?: string; name?: string };
 }
 
 // PBX Context Value

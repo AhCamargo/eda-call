@@ -15,9 +15,15 @@ import {
 } from "./services/uraReverseWorker";
 import {
   upsertSipExtension,
+  upsertPjsipExtension,
+  removePjsipExtensionProvision,
   upsertSipVoipLine,
   removeExtensionProvision,
   removeVoipLineProvision,
+  upsertInboundIvrDialplan,
+  removeInboundIvrDialplan,
+  upsertQueue,
+  removeQueue,
 } from "./services/asteriskProvisioning";
 import {
   Extension,
@@ -31,6 +37,10 @@ import {
   UraReverseOption,
   UraReverseContact,
   User,
+  InboundIvr,
+  InboundIvrOption,
+  AsteriskQueue,
+  AsteriskQueueMember,
 } from "./db";
 
 const { internalApiKey, asteriskSoundsDir, asteriskRecordingsDir } = config;
@@ -160,7 +170,7 @@ export const createRoutes = (io: Server) => {
       const passwordHash = bcrypt.hashSync(password, 10);
       const user = await User.create({ username, passwordHash, role });
       return res.status(201).json({
-        id: user.id,
+        id: (user as any).id,
         username: (user as any).username,
         role: (user as any).role,
         createdAt: (user as any).createdAt,
@@ -173,7 +183,7 @@ export const createRoutes = (io: Server) => {
     verifyToken,
     requireAdmin,
     async (req: Request, res: Response) => {
-      const user = (await User.findByPk(req.params.id)) as any;
+      const user = (await User.findByPk(req.params.id as string)) as any;
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
       const { username, password, role } = req.body;
@@ -200,7 +210,7 @@ export const createRoutes = (io: Server) => {
         return res
           .status(400)
           .json({ message: "Não é possível excluir sua própria conta" });
-      const user = await User.findByPk(req.params.id);
+      const user = await User.findByPk(req.params.id as string);
       if (!user)
         return res.status(404).json({ message: "Usuário não encontrado" });
       await user.destroy();
@@ -235,7 +245,7 @@ export const createRoutes = (io: Server) => {
     "/supervisor/agents/:id/force-pause",
     verifyToken,
     async (req: Request, res: Response) => {
-      const agent = (await Extension.findByPk(req.params.id)) as any;
+      const agent = (await Extension.findByPk(req.params.id as string)) as any;
       if (!agent)
         return res.status(404).json({ message: "Ramal não encontrado" });
       agent.status = "paused";
@@ -250,7 +260,7 @@ export const createRoutes = (io: Server) => {
     "/supervisor/agents/:id/resume",
     verifyToken,
     async (req: Request, res: Response) => {
-      const agent = (await Extension.findByPk(req.params.id)) as any;
+      const agent = (await Extension.findByPk(req.params.id as string)) as any;
       if (!agent)
         return res.status(404).json({ message: "Ramal não encontrado" });
       agent.status = "online";
@@ -432,7 +442,7 @@ export const createRoutes = (io: Server) => {
     uploadAudio.single("audio"),
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -493,7 +503,7 @@ export const createRoutes = (io: Server) => {
     "/ura-reverse/campaigns/:id/options",
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -579,7 +589,7 @@ export const createRoutes = (io: Server) => {
     upload.single("file"),
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -641,7 +651,7 @@ export const createRoutes = (io: Server) => {
     "/ura-reverse/campaigns/:id/start",
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -663,7 +673,7 @@ export const createRoutes = (io: Server) => {
     "/ura-reverse/campaigns/:id/pause",
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -684,7 +694,7 @@ export const createRoutes = (io: Server) => {
     "/ura-reverse/campaigns/:id/finish",
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
-        req.params.id,
+        req.params.id as string,
       )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
@@ -786,14 +796,17 @@ export const createRoutes = (io: Server) => {
         if (line && line.context) context = line.context;
       }
 
-      await upsertSipExtension({
-        number: normalizedNumber,
-        secret: password,
-        context,
-        voipLineName: voipLineId
-          ? ((await VoipLine.findByPk(Number(voipLineId))) as any)?.name
-          : null,
-      });
+      await Promise.all([
+        upsertSipExtension({
+          number: normalizedNumber,
+          secret: password,
+          context,
+          voipLineName: voipLineId
+            ? ((await VoipLine.findByPk(Number(voipLineId))) as any)?.name
+            : null,
+        }),
+        upsertPjsipExtension({ number: normalizedNumber, secret: password }),
+      ]);
     } catch (error: any) {
       return res.status(201).json({
         ...withExtensionSector(extension),
@@ -815,7 +828,9 @@ export const createRoutes = (io: Server) => {
     "/extensions/:id/status",
     async (req: Request, res: Response) => {
       const { status } = req.body;
-      const extension = (await Extension.findByPk(req.params.id)) as any;
+      const extension = (await Extension.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!extension) {
         return res.status(404).json({ message: "Ramal não encontrado" });
       }
@@ -831,7 +846,9 @@ export const createRoutes = (io: Server) => {
   );
 
   router.patch("/extensions/:id/pause", async (req: Request, res: Response) => {
-    const extension = (await Extension.findByPk(req.params.id)) as any;
+    const extension = (await Extension.findByPk(
+      req.params.id as string,
+    )) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -853,7 +870,9 @@ export const createRoutes = (io: Server) => {
   router.patch(
     "/extensions/:id/resume",
     async (req: Request, res: Response) => {
-      const extension = (await Extension.findByPk(req.params.id)) as any;
+      const extension = (await Extension.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!extension) {
         return res.status(404).json({ message: "Ramal não encontrado" });
       }
@@ -868,7 +887,9 @@ export const createRoutes = (io: Server) => {
   );
 
   router.patch("/extensions/:id", async (req: Request, res: Response) => {
-    const extension = (await Extension.findByPk(req.params.id)) as any;
+    const extension = (await Extension.findByPk(
+      req.params.id as string,
+    )) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -915,6 +936,7 @@ export const createRoutes = (io: Server) => {
 
     if (oldNumber !== nextNumber) {
       await removeExtensionProvision({ number: oldNumber });
+      await removePjsipExtensionProvision({ number: oldNumber });
     }
 
     // determine context from associated VoIP line (if any)
@@ -926,14 +948,18 @@ export const createRoutes = (io: Server) => {
       if (line && line.context) context = line.context;
     }
 
-    await upsertSipExtension({
-      number: nextNumber,
-      secret: password,
-      context,
-      voipLineName: extension.voipLineId
-        ? ((await VoipLine.findByPk(Number(extension.voipLineId))) as any)?.name
-        : null,
-    });
+    await Promise.all([
+      upsertSipExtension({
+        number: nextNumber,
+        secret: password,
+        context,
+        voipLineName: extension.voipLineId
+          ? ((await VoipLine.findByPk(Number(extension.voipLineId))) as any)
+              ?.name
+          : null,
+      }),
+      upsertPjsipExtension({ number: nextNumber, secret: password }),
+    ]);
 
     io.emit("dashboard:update");
     return res.json({
@@ -943,7 +969,9 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/extensions/:id", async (req: Request, res: Response) => {
-    const extension = (await Extension.findByPk(req.params.id)) as any;
+    const extension = (await Extension.findByPk(
+      req.params.id as string,
+    )) as any;
     if (!extension) {
       return res.status(404).json({ message: "Ramal não encontrado" });
     }
@@ -951,15 +979,35 @@ export const createRoutes = (io: Server) => {
     const number = extension.number;
     await extension.destroy();
     await removeExtensionProvision({ number });
+    await removePjsipExtensionProvision({ number });
 
     io.emit("dashboard:update");
     return res.json({ message: "Ramal deletado com sucesso" });
   });
 
+  router.get(
+    "/extensions/:id/webrtc-credentials",
+    async (req: Request, res: Response) => {
+      const extension = (await Extension.findByPk(
+        req.params.id as string,
+      )) as any;
+      if (!extension) {
+        return res.status(404).json({ message: "Ramal não encontrado" });
+      }
+      return res.json({
+        extensionNumber: extension.number,
+        password: extension.password,
+        wsServer: config.asteriskWsUrl,
+      });
+    },
+  );
+
   router.post(
     "/extensions/:id/provision",
     async (req: Request, res: Response) => {
-      const extension = (await Extension.findByPk(req.params.id)) as any;
+      const extension = (await Extension.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!extension) {
         return res.status(404).json({ message: "Ramal não encontrado" });
       }
@@ -984,14 +1032,17 @@ export const createRoutes = (io: Server) => {
         if (line && line.context) context = line.context;
       }
 
-      await upsertSipExtension({
-        number: extension.number,
-        secret: password,
-        context,
-        voipLineName: voipLineToUse
-          ? ((await VoipLine.findByPk(Number(voipLineToUse))) as any)?.name
-          : null,
-      });
+      await Promise.all([
+        upsertSipExtension({
+          number: extension.number,
+          secret: password,
+          context,
+          voipLineName: voipLineToUse
+            ? ((await VoipLine.findByPk(Number(voipLineToUse))) as any)?.name
+            : null,
+        }),
+        upsertPjsipExtension({ number: extension.number, secret: password }),
+      ]);
 
       return res.json({ message: "Ramal provisionado no Asterisk", password });
     },
@@ -1005,10 +1056,16 @@ export const createRoutes = (io: Server) => {
       })) as any[];
 
       for (const extension of extensions) {
-        await upsertSipExtension({
-          number: extension.number,
-          secret: extension.password,
-        });
+        await Promise.all([
+          upsertSipExtension({
+            number: extension.number,
+            secret: extension.password,
+          }),
+          upsertPjsipExtension({
+            number: extension.number,
+            secret: extension.password,
+          }),
+        ]);
       }
 
       return res.json({
@@ -1081,7 +1138,14 @@ export const createRoutes = (io: Server) => {
       host,
       port = 5060,
       context = "default",
+      inboundContext = null,
       transport = "transport-udp",
+      type = "peer",
+      dtmfmode = "rfc2833",
+      fromdomain = null,
+      codecs = "ulaw,alaw",
+      callLimit = 0,
+      insecure = "invite,port",
     } = req.body;
 
     const line = await VoipLine.create({
@@ -1091,7 +1155,14 @@ export const createRoutes = (io: Server) => {
       host,
       port,
       context,
+      inboundContext,
       transport,
+      type,
+      dtmfmode,
+      fromdomain,
+      codecs,
+      callLimit,
+      insecure,
     });
 
     try {
@@ -1102,6 +1173,13 @@ export const createRoutes = (io: Server) => {
         host,
         port,
         context,
+        inboundContext,
+        type,
+        dtmfmode,
+        fromdomain,
+        codecs,
+        callLimit,
+        insecure,
       });
     } catch (error: any) {
       return res.status(201).json({
@@ -1116,7 +1194,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.patch("/voip-lines/:id", async (req: Request, res: Response) => {
-    const line = (await VoipLine.findByPk(req.params.id)) as any;
+    const line = (await VoipLine.findByPk(req.params.id as string)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
     }
@@ -1139,10 +1217,38 @@ export const createRoutes = (io: Server) => {
         req.body?.context !== undefined
           ? String(req.body.context).trim()
           : line.context,
+      inboundContext:
+        req.body?.inboundContext !== undefined
+          ? req.body.inboundContext || null
+          : line.inboundContext,
       transport:
         req.body?.transport !== undefined
           ? String(req.body.transport).trim()
           : line.transport,
+      type:
+        req.body?.type !== undefined
+          ? String(req.body.type).trim()
+          : line.type || "peer",
+      dtmfmode:
+        req.body?.dtmfmode !== undefined
+          ? String(req.body.dtmfmode).trim()
+          : line.dtmfmode || "rfc2833",
+      fromdomain:
+        req.body?.fromdomain !== undefined
+          ? req.body.fromdomain || null
+          : line.fromdomain,
+      codecs:
+        req.body?.codecs !== undefined
+          ? String(req.body.codecs).trim()
+          : line.codecs || "ulaw,alaw",
+      callLimit:
+        req.body?.callLimit !== undefined
+          ? Number(req.body.callLimit)
+          : line.callLimit || 0,
+      insecure:
+        req.body?.insecure !== undefined
+          ? req.body.insecure || null
+          : line.insecure,
     };
 
     if (
@@ -1174,13 +1280,20 @@ export const createRoutes = (io: Server) => {
       host: line.host,
       port: line.port,
       context: line.context,
+      inboundContext: line.inboundContext,
+      type: line.type,
+      dtmfmode: line.dtmfmode,
+      fromdomain: line.fromdomain,
+      codecs: line.codecs,
+      callLimit: line.callLimit,
+      insecure: line.insecure,
     });
 
     return res.json(line);
   });
 
   router.delete("/voip-lines/:id", async (req: Request, res: Response) => {
-    const line = (await VoipLine.findByPk(req.params.id)) as any;
+    const line = (await VoipLine.findByPk(req.params.id as string)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
     }
@@ -1195,18 +1308,25 @@ export const createRoutes = (io: Server) => {
   router.post(
     "/voip-lines/:id/provision",
     async (req: Request, res: Response) => {
-      const line = (await VoipLine.findByPk(req.params.id)) as any;
+      const line = (await VoipLine.findByPk(req.params.id as string)) as any;
       if (!line) {
         return res.status(404).json({ message: "Linha VoIP não encontrada" });
       }
 
       await upsertSipVoipLine({
         name: line.name,
-        username: req.body?.username || line.username,
-        secret: req.body?.secret || line.secret,
-        host: req.body?.host || line.host,
-        port: req.body?.port || line.port,
-        context: req.body?.context || line.context,
+        username: line.username,
+        secret: line.secret,
+        host: line.host,
+        port: line.port,
+        context: line.context,
+        inboundContext: line.inboundContext,
+        type: line.type,
+        dtmfmode: line.dtmfmode,
+        fromdomain: line.fromdomain,
+        codecs: line.codecs,
+        callLimit: line.callLimit,
+        insecure: line.insecure,
       });
 
       return res.json({ message: "Linha VoIP provisionada no Asterisk" });
@@ -1226,7 +1346,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/campaigns/:id/report", async (req: Request, res: Response) => {
-    const campaign = (await Campaign.findByPk(req.params.id, {
+    const campaign = (await Campaign.findByPk(req.params.id as string, {
       include: [
         { model: CampaignContact, as: "contacts" },
         {
@@ -1278,7 +1398,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.patch("/campaigns/:id", async (req: Request, res: Response) => {
-    const campaign = (await Campaign.findByPk(req.params.id)) as any;
+    const campaign = (await Campaign.findByPk(req.params.id as string)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1312,7 +1432,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/campaigns/:id", async (req: Request, res: Response) => {
-    const campaign = (await Campaign.findByPk(req.params.id)) as any;
+    const campaign = (await Campaign.findByPk(req.params.id as string)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1331,7 +1451,9 @@ export const createRoutes = (io: Server) => {
     "/campaigns/:id/assign-extensions",
     async (req: Request, res: Response) => {
       const { extensionIds = [] } = req.body;
-      const campaign = (await Campaign.findByPk(req.params.id)) as any;
+      const campaign = (await Campaign.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha não encontrada" });
       }
@@ -1348,7 +1470,9 @@ export const createRoutes = (io: Server) => {
     "/campaigns/:id/assign-voip-lines",
     async (req: Request, res: Response) => {
       const { voipLineIds = [] } = req.body;
-      const campaign = (await Campaign.findByPk(req.params.id)) as any;
+      const campaign = (await Campaign.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha não encontrada" });
       }
@@ -1363,7 +1487,9 @@ export const createRoutes = (io: Server) => {
     "/campaigns/:id/upload-phones",
     upload.single("file"),
     async (req: Request, res: Response) => {
-      const campaign = (await Campaign.findByPk(req.params.id)) as any;
+      const campaign = (await Campaign.findByPk(
+        req.params.id as string,
+      )) as any;
       if (!campaign) {
         return res.status(404).json({ message: "Campanha não encontrada" });
       }
@@ -1395,7 +1521,7 @@ export const createRoutes = (io: Server) => {
   );
 
   router.post("/campaigns/:id/start", async (req: Request, res: Response) => {
-    const campaign = (await Campaign.findByPk(req.params.id)) as any;
+    const campaign = (await Campaign.findByPk(req.params.id as string)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
     }
@@ -1531,7 +1657,9 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/recordings/:id", async (req: Request, res: Response) => {
-    const recording = (await CallRecording.findByPk(req.params.id)) as any;
+    const recording = (await CallRecording.findByPk(
+      req.params.id as string,
+    )) as any;
     if (!recording) {
       return res.status(404).json({ message: "Gravação não encontrada" });
     }
@@ -1662,6 +1790,282 @@ export const createRoutes = (io: Server) => {
     );
 
     return res.json(payload);
+  });
+
+  // ── Filas (Asterisk Queues) ─────────────────────────────────────────────
+
+  router.get("/queues", async (_req: Request, res: Response) => {
+    const queues = (await AsteriskQueue.findAll({
+      include: [{ model: AsteriskQueueMember, as: "members" }],
+      order: [["name", "ASC"]],
+    })) as any[];
+    return res.json(queues.map((q) => q.toJSON()));
+  });
+
+  router.get("/queues/:id", async (req: Request, res: Response) => {
+    const queue = (await AsteriskQueue.findByPk(req.params.id, {
+      include: [{ model: AsteriskQueueMember, as: "members" }],
+    })) as any;
+    if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
+    return res.json(queue.toJSON());
+  });
+
+  router.post("/queues", async (req: Request, res: Response) => {
+    const {
+      name,
+      strategy = "ringall",
+      timeout = 30,
+      maxlen = 0,
+      wrapuptime = 0,
+      musiconhold = null,
+      announce = null,
+      members = [],
+    } = req.body;
+
+    if (!name) return res.status(400).json({ message: "name é obrigatório" });
+
+    const queue = (await AsteriskQueue.create({
+      name: String(name).trim().toLowerCase().replace(/\s+/g, "-"),
+      strategy,
+      timeout: Number(timeout),
+      maxlen: Number(maxlen),
+      wrapuptime: Number(wrapuptime),
+      musiconhold: musiconhold || null,
+      announce: announce || null,
+    })) as any;
+
+    const createdMembers: any[] = [];
+    for (const m of members as any[]) {
+      const member = await AsteriskQueueMember.create({
+        queueId: queue.id,
+        extensionNumber: String(m.extensionNumber).trim(),
+        penalty: Number(m.penalty ?? 0),
+      });
+      createdMembers.push((member as any).toJSON());
+    }
+
+    await upsertQueue({
+      name: queue.name,
+      strategy: queue.strategy,
+      timeout: queue.timeout,
+      maxlen: queue.maxlen,
+      wrapuptime: queue.wrapuptime,
+      musiconhold: queue.musiconhold,
+      announce: queue.announce,
+      members: createdMembers,
+    });
+
+    return res.status(201).json({ ...queue.toJSON(), members: createdMembers });
+  });
+
+  router.put("/queues/:id", async (req: Request, res: Response) => {
+    const queue = (await AsteriskQueue.findByPk(req.params.id, {
+      include: [{ model: AsteriskQueueMember, as: "members" }],
+    })) as any;
+    if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
+
+    const { name, strategy, timeout, maxlen, wrapuptime, musiconhold, announce, members } = req.body;
+
+    const oldName = queue.name;
+    if (name !== undefined) queue.name = String(name).trim().toLowerCase().replace(/\s+/g, "-");
+    if (strategy !== undefined) queue.strategy = strategy;
+    if (timeout !== undefined) queue.timeout = Number(timeout);
+    if (maxlen !== undefined) queue.maxlen = Number(maxlen);
+    if (wrapuptime !== undefined) queue.wrapuptime = Number(wrapuptime);
+    if (musiconhold !== undefined) queue.musiconhold = musiconhold || null;
+    if (announce !== undefined) queue.announce = announce || null;
+    await queue.save();
+
+    let updatedMembers = queue.members?.map((m: any) => m.toJSON()) ?? [];
+    if (Array.isArray(members)) {
+      await AsteriskQueueMember.destroy({ where: { queueId: queue.id } });
+      updatedMembers = [];
+      for (const m of members) {
+        const member = await AsteriskQueueMember.create({
+          queueId: queue.id,
+          extensionNumber: String(m.extensionNumber).trim(),
+          penalty: Number(m.penalty ?? 0),
+        });
+        updatedMembers.push((member as any).toJSON());
+      }
+    }
+
+    if (oldName !== queue.name) {
+      await removeQueue({ name: oldName });
+    }
+    await upsertQueue({
+      name: queue.name,
+      strategy: queue.strategy,
+      timeout: queue.timeout,
+      maxlen: queue.maxlen,
+      wrapuptime: queue.wrapuptime,
+      musiconhold: queue.musiconhold,
+      announce: queue.announce,
+      members: updatedMembers,
+    });
+
+    return res.json({ ...queue.toJSON(), members: updatedMembers });
+  });
+
+  router.delete("/queues/:id", async (req: Request, res: Response) => {
+    const queue = (await AsteriskQueue.findByPk(req.params.id)) as any;
+    if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
+
+    await removeQueue({ name: queue.name });
+    await AsteriskQueueMember.destroy({ where: { queueId: queue.id } });
+    await queue.destroy();
+    return res.json({ message: "Fila removida com sucesso" });
+  });
+
+  // ── Central Telefônica (URA Receptiva) ─────────────────────────────────
+
+  router.get("/inbound-ivr", async (_req: Request, res: Response) => {
+    const ivrs = (await InboundIvr.findAll({
+      include: [{ model: InboundIvrOption, as: "options" }],
+      order: [["createdAt", "ASC"]],
+    })) as any[];
+    return res.json(ivrs.map((i) => i.toJSON()));
+  });
+
+  router.get("/inbound-ivr/:id", async (req: Request, res: Response) => {
+    const ivr = (await InboundIvr.findByPk(req.params.id, {
+      include: [{ model: InboundIvrOption, as: "options" }],
+    })) as any;
+    if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
+    return res.json(ivr.toJSON());
+  });
+
+  router.post("/inbound-ivr", async (req: Request, res: Response) => {
+    const {
+      name,
+      contextName,
+      voipLineId = null,
+      audioFile = null,
+      digitTimeoutSeconds = 5,
+      maxInvalidAttempts = 3,
+      fallbackExtension = null,
+      fallbackLabel = "Transbordo",
+      dialTechnology = "SIP",
+      options = [],
+    } = req.body;
+
+    if (!name || !contextName) {
+      return res.status(400).json({ message: "name e contextName são obrigatórios" });
+    }
+
+    const ivr = (await InboundIvr.create({
+      name: String(name).trim(),
+      contextName: String(contextName).trim(),
+      voipLineId: voipLineId || null,
+      audioFile: audioFile || null,
+      digitTimeoutSeconds: Number(digitTimeoutSeconds),
+      maxInvalidAttempts: Number(maxInvalidAttempts),
+      fallbackExtension: fallbackExtension || null,
+      fallbackLabel: fallbackLabel || "Transbordo",
+      dialTechnology: dialTechnology || "SIP",
+    })) as any;
+
+    const createdOptions: any[] = [];
+    for (const opt of options as any[]) {
+      const o = await InboundIvrOption.create({
+        ivrId: ivr.id,
+        keyDigit: String(opt.keyDigit).trim(),
+        label: opt.label || null,
+        actionType: opt.actionType || "transfer_extension",
+        targetExtension: opt.targetExtension || null,
+      });
+      createdOptions.push((o as any).toJSON());
+    }
+
+    await upsertInboundIvrDialplan({
+      contextName: ivr.contextName,
+      name: ivr.name,
+      audioFile: ivr.audioFile,
+      digitTimeoutSeconds: ivr.digitTimeoutSeconds,
+      maxInvalidAttempts: ivr.maxInvalidAttempts,
+      fallbackExtension: ivr.fallbackExtension,
+      fallbackLabel: ivr.fallbackLabel,
+      dialTechnology: ivr.dialTechnology,
+      options: createdOptions,
+    });
+
+    return res.status(201).json({ ...ivr.toJSON(), options: createdOptions });
+  });
+
+  router.put("/inbound-ivr/:id", async (req: Request, res: Response) => {
+    const ivr = (await InboundIvr.findByPk(req.params.id, {
+      include: [{ model: InboundIvrOption, as: "options" }],
+    })) as any;
+    if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
+
+    const {
+      name,
+      contextName,
+      voipLineId,
+      audioFile,
+      digitTimeoutSeconds,
+      maxInvalidAttempts,
+      fallbackExtension,
+      fallbackLabel,
+      dialTechnology,
+      options,
+    } = req.body;
+
+    const oldContext = ivr.contextName;
+
+    if (name !== undefined) ivr.name = String(name).trim();
+    if (contextName !== undefined) ivr.contextName = String(contextName).trim();
+    if (voipLineId !== undefined) ivr.voipLineId = voipLineId || null;
+    if (audioFile !== undefined) ivr.audioFile = audioFile || null;
+    if (digitTimeoutSeconds !== undefined) ivr.digitTimeoutSeconds = Number(digitTimeoutSeconds);
+    if (maxInvalidAttempts !== undefined) ivr.maxInvalidAttempts = Number(maxInvalidAttempts);
+    if (fallbackExtension !== undefined) ivr.fallbackExtension = fallbackExtension || null;
+    if (fallbackLabel !== undefined) ivr.fallbackLabel = fallbackLabel || "Transbordo";
+    if (dialTechnology !== undefined) ivr.dialTechnology = dialTechnology;
+    await ivr.save();
+
+    let updatedOptions = ivr.options?.map((o: any) => o.toJSON()) ?? [];
+    if (Array.isArray(options)) {
+      await InboundIvrOption.destroy({ where: { ivrId: ivr.id } });
+      updatedOptions = [];
+      for (const opt of options) {
+        const o = await InboundIvrOption.create({
+          ivrId: ivr.id,
+          keyDigit: String(opt.keyDigit).trim(),
+          label: opt.label || null,
+          actionType: opt.actionType || "transfer_extension",
+          targetExtension: opt.targetExtension || null,
+        });
+        updatedOptions.push((o as any).toJSON());
+      }
+    }
+
+    if (oldContext !== ivr.contextName) {
+      await removeInboundIvrDialplan({ contextName: oldContext });
+    }
+    await upsertInboundIvrDialplan({
+      contextName: ivr.contextName,
+      name: ivr.name,
+      audioFile: ivr.audioFile,
+      digitTimeoutSeconds: ivr.digitTimeoutSeconds,
+      maxInvalidAttempts: ivr.maxInvalidAttempts,
+      fallbackExtension: ivr.fallbackExtension,
+      fallbackLabel: ivr.fallbackLabel,
+      dialTechnology: ivr.dialTechnology,
+      options: updatedOptions,
+    });
+
+    return res.json({ ...ivr.toJSON(), options: updatedOptions });
+  });
+
+  router.delete("/inbound-ivr/:id", async (req: Request, res: Response) => {
+    const ivr = (await InboundIvr.findByPk(req.params.id)) as any;
+    if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
+
+    await removeInboundIvrDialplan({ contextName: ivr.contextName });
+    await InboundIvrOption.destroy({ where: { ivrId: ivr.id } });
+    await ivr.destroy();
+    return res.json({ message: "IVR removido com sucesso" });
   });
 
   return router;

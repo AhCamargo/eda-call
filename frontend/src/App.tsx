@@ -18,6 +18,8 @@ import AgentView from "./views/AgentView";
 import SupervisorView from "./views/SupervisorView";
 import Gravacoes from "./views/Gravacoes";
 import Usuarios from "./views/Usuarios";
+import CentralTelefonica from "./views/CentralTelefonica";
+import Filas from "./views/Filas";
 import { PbxProvider } from "./context/PbxContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -178,7 +180,7 @@ function App(): JSX.Element {
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
-      <PbxProvider token={token} user={user} onUnauthorized={handleLogout}>
+      <PbxProvider token={token} user={user ?? undefined} onUnauthorized={handleLogout}>
         <BrowserRouter>
           <Routes>
             <Route element={<Layout onLogout={handleLogout} />}>
@@ -200,6 +202,8 @@ function App(): JSX.Element {
                 path="/campanhas/ura-reversa/relatorios"
                 element={<UraReversaRelatorios />}
               />
+              <Route path="/central-telefonica" element={<CentralTelefonica />} />
+              <Route path="/filas" element={<Filas />} />
               <Route path="/linhas-voip" element={<LinhasVoip />} />
               <Route path="/gravacoes" element={<Gravacoes />} />
               <Route path="/relatorios" element={<Relatorios />} />

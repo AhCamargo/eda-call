@@ -20,18 +20,27 @@ export const login = async (req: Request, res: Response) => {
     return res.status(404).json({ message: "Usuário não encontrado" });
   }
 
-  const validPassword = bcrypt.compareSync(password, user.passwordHash);
+  const u = user as any;
+  const validPassword = bcrypt.compareSync(password, u.passwordHash);
   if (!validPassword) {
     return res.status(401).json({ message: "Senha inválida" });
   }
 
-  const token = jwt.sign({ id: user.id, role: user.role, username: user.username }, config.jwtSecret, {
-    expiresIn: "8h",
-  });
+  const token = jwt.sign(
+    { id: u.id, role: u.role, username: u.username },
+    config.jwtSecret,
+    {
+      expiresIn: "8h",
+    },
+  );
   return res.json({ token });
 };
 
-export const verifyToken = (req: Request, res: Response, next: NextFunction) => {
+export const verifyToken = (
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) => {
   const authHeader = req.headers.authorization || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
@@ -40,7 +49,11 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction) => 
   }
 
   try {
-    req.user = jwt.verify(token, config.jwtSecret) as { id: number; role: string; username: string };
+    req.user = jwt.verify(token, config.jwtSecret) as {
+      id: number;
+      role: string;
+      username: string;
+    };
     return next();
   } catch {
     return res.status(401).json({ message: "Token inválido" });
