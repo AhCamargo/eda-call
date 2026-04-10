@@ -101,12 +101,9 @@ export const originateReverseIvr = ({
   uraRef: string;
 }) => {
   const client = getAmiClient();
-  const tech = String(channelTechnology || "SIP").toUpperCase();
   const channel = voipLineName
-    ? tech === "PJSIP"
-      ? `PJSIP/${phoneNumber}@${voipLineName}`
-      : `SIP/${voipLineName}/${phoneNumber}`
-    : `${tech}/${phoneNumber}`;
+    ? `SIP/${voipLineName}/${phoneNumber}`
+    : `SIP/${phoneNumber}`;
 
   const vars = [
     `APP_PHONE=${phoneNumber}`,

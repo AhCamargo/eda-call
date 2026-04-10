@@ -15,13 +15,13 @@ import {
 } from "./services/uraReverseWorker";
 import {
   upsertSipExtension,
-  upsertPjsipExtension,
-  removePjsipExtensionProvision,
   upsertSipVoipLine,
   removeExtensionProvision,
   removeVoipLineProvision,
   upsertInboundIvrDialplan,
   removeInboundIvrDialplan,
+  upsertTrunkInboundRoute,
+  removeTrunkInboundRoute,
   upsertQueue,
   removeQueue,
 } from "./services/asteriskProvisioning";
@@ -404,7 +404,7 @@ export const createRoutes = (io: Server) => {
       callTimeoutSeconds = 25,
       detectVoicemail = false,
       autoCallback = false,
-      dialTechnology = "PJSIP",
+      dialTechnology = "SIP",
     } = req.body || {};
 
     if (!name || !String(name).trim()) {
@@ -428,10 +428,7 @@ export const createRoutes = (io: Server) => {
       callTimeoutSeconds: Number(callTimeoutSeconds) || 25,
       detectVoicemail: Boolean(detectVoicemail),
       autoCallback: Boolean(autoCallback),
-      dialTechnology:
-        String(dialTechnology || "PJSIP").toUpperCase() === "SIP"
-          ? "SIP"
-          : "PJSIP",
+      dialTechnology: "SIP",
     });
 
     return res.status(201).json(campaign);
@@ -805,7 +802,6 @@ export const createRoutes = (io: Server) => {
             ? ((await VoipLine.findByPk(Number(voipLineId))) as any)?.name
             : null,
         }),
-        upsertPjsipExtension({ number: normalizedNumber, secret: password }),
       ]);
     } catch (error: any) {
       return res.status(201).json({
@@ -936,7 +932,6 @@ export const createRoutes = (io: Server) => {
 
     if (oldNumber !== nextNumber) {
       await removeExtensionProvision({ number: oldNumber });
-      await removePjsipExtensionProvision({ number: oldNumber });
     }
 
     // determine context from associated VoIP line (if any)
@@ -958,7 +953,6 @@ export const createRoutes = (io: Server) => {
               ?.name
           : null,
       }),
-      upsertPjsipExtension({ number: nextNumber, secret: password }),
     ]);
 
     io.emit("dashboard:update");
@@ -979,7 +973,6 @@ export const createRoutes = (io: Server) => {
     const number = extension.number;
     await extension.destroy();
     await removeExtensionProvision({ number });
-    await removePjsipExtensionProvision({ number });
 
     io.emit("dashboard:update");
     return res.json({ message: "Ramal deletado com sucesso" });
@@ -1041,7 +1034,6 @@ export const createRoutes = (io: Server) => {
             ? ((await VoipLine.findByPk(Number(voipLineToUse))) as any)?.name
             : null,
         }),
-        upsertPjsipExtension({ number: extension.number, secret: password }),
       ]);
 
       return res.json({ message: "Ramal provisionado no Asterisk", password });
@@ -1058,10 +1050,6 @@ export const createRoutes = (io: Server) => {
       for (const extension of extensions) {
         await Promise.all([
           upsertSipExtension({
-            number: extension.number,
-            secret: extension.password,
-          }),
-          upsertPjsipExtension({
             number: extension.number,
             secret: extension.password,
           }),
@@ -1989,6 +1977,17 @@ export const createRoutes = (io: Server) => {
       options: createdOptions,
     });
 
+    if (ivr.voipLineId) {
+      const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
+      const trunkCtx = line?.inboundContext || line?.context;
+      if (trunkCtx) {
+        await upsertTrunkInboundRoute({
+          trunkContext: trunkCtx,
+          ivrContext: ivr.contextName,
+        });
+      }
+    }
+
     return res.status(201).json({ ...ivr.toJSON(), options: createdOptions });
   });
 
@@ -2055,6 +2054,17 @@ export const createRoutes = (io: Server) => {
       options: updatedOptions,
     });
 
+    if (ivr.voipLineId) {
+      const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
+      const trunkCtx = line?.inboundContext || line?.context;
+      if (trunkCtx) {
+        await upsertTrunkInboundRoute({
+          trunkContext: trunkCtx,
+          ivrContext: ivr.contextName,
+        });
+      }
+    }
+
     return res.json({ ...ivr.toJSON(), options: updatedOptions });
   });
 
@@ -2062,6 +2072,13 @@ export const createRoutes = (io: Server) => {
     const ivr = (await InboundIvr.findByPk(req.params.id)) as any;
     if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
 
+    if (ivr.voipLineId) {
+      const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
+      const trunkCtx = line?.inboundContext || line?.context;
+      if (trunkCtx) {
+        await removeTrunkInboundRoute({ trunkContext: trunkCtx });
+      }
+    }
     await removeInboundIvrDialplan({ contextName: ivr.contextName });
     await InboundIvrOption.destroy({ where: { ivrId: ivr.id } });
     await ivr.destroy();

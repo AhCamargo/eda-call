@@ -11,9 +11,6 @@ const config = {
   asteriskSoundsDir: process.env.ASTERISK_SOUNDS_DIR || "/asterisk-sounds",
   asteriskSipCustomFile:
     process.env.ASTERISK_SIP_CUSTOM_FILE || "/asterisk-config/sip_custom.conf",
-  asteriskPjsipCustomFile:
-    process.env.ASTERISK_PJSIP_CUSTOM_FILE ||
-    "/asterisk-config/pjsip_custom.conf",
   asteriskExtensionsCustomFile:
     process.env.ASTERISK_EXTENSIONS_CUSTOM_FILE ||
     "/asterisk-config/extensions_custom.conf",

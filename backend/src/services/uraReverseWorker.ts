@@ -150,7 +150,7 @@ const processContact = async (campaign: any, contact: any, options: any[]) => {
       option3TargetExtension: targetMap["3"] || "2001",
       promptAudio: campaign.audioFile || "custom/edacall-menu-ptbr",
       uraRef: `uracamp-${campaign.id}-${contact.id}-${Date.now()}`,
-      channelTechnology: campaign.dialTechnology || "PJSIP",
+      channelTechnology: "SIP",
       digitTimeoutSeconds: campaign.digitTimeoutSeconds,
       timeoutMs: campaign.callTimeoutSeconds * 1000,
       extraVariables: {

@@ -4,7 +4,6 @@ import { runCommand } from "../ami";
 
 const {
   asteriskSipCustomFile,
-  asteriskPjsipCustomFile,
   asteriskExtensionsCustomFile,
   asteriskQueuesCustomFile,
 } = config;
@@ -160,65 +159,6 @@ const removeNamedBlock = async ({
 
   const updated = content.replace(markerRegex, "\n");
   await fs.writeFile(filePath, `${updated.trimEnd()}\n`, "utf-8");
-};
-
-// ─────────────────────────────────────────────────────────
-// PJSIP / WebRTC
-// ─────────────────────────────────────────────────────────
-
-const buildPjsipExtensionBlock = (number: string, secret: string) => {
-  return `
-[${number}](webrtc-endpoint)
-auth=${number}-pjsip-auth
-aors=${number}-pjsip
-
-[${number}-pjsip-auth](webrtc-auth)
-username=${number}
-password=${secret}
-
-[${number}-pjsip](webrtc-aor)
-`;
-};
-
-export const upsertPjsipExtension = async ({
-  number,
-  secret = "1234",
-}: {
-  number: string;
-  secret?: string;
-}) => {
-  const numberText = String(number).trim();
-  if (!numberText) throw new Error("Número do ramal inválido");
-
-  await upsertNamedBlock({
-    filePath: asteriskPjsipCustomFile,
-    sectionName: numberText,
-    blockContent: buildPjsipExtensionBlock(numberText, secret),
-    scope: "pjsip-extension",
-  });
-
-  try {
-    await runCommand("module reload res_pjsip.so");
-  } catch {}
-};
-
-export const removePjsipExtensionProvision = async ({
-  number,
-}: {
-  number: string;
-}) => {
-  const numberText = String(number).trim();
-  if (!numberText) return;
-
-  await removeNamedBlock({
-    filePath: asteriskPjsipCustomFile,
-    sectionName: numberText,
-    scope: "pjsip-extension",
-  });
-
-  try {
-    await runCommand("module reload res_pjsip.so");
-  } catch {}
 };
 
 // ─────────────────────────────────────────────────────────
@@ -406,7 +346,7 @@ const buildInboundIvrDialplan = ({
       if (opt.actionType === "transfer_queue") {
         return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> fila ${target})\n same => n,Queue(${target},t,,,,60)\n same => n,Hangup()`;
       }
-      return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> ${target})\n same => n,Dial(SIP/${target}&PJSIP/${target},30)\n same => n,Hangup()`;
+      return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> ${target})\n same => n,Dial(SIP/${target},30)\n same => n,Hangup()`;
     })
     .join("\n\n");
 
@@ -486,6 +426,62 @@ export const removeInboundIvrDialplan = async ({
 };
 
 // ─────────────────────────────────────────────────────────
+// Roteamento de entrada do tronco (trunk inbound route)
+// Atualiza o contexto do tronco para rotear chamadas entrantes
+// para o IVR configurado na central telefônica.
+// ─────────────────────────────────────────────────────────
+
+export const upsertTrunkInboundRoute = async ({
+  trunkContext,
+  ivrContext,
+}: {
+  trunkContext: string;
+  ivrContext: string;
+}) => {
+  const trunk = String(trunkContext || "").trim();
+  const ivr = String(ivrContext || "").trim();
+  if (!trunk || !ivr) return;
+
+  const blockContent = `
+[${trunk}]
+; Inbound do tronco: roteia para a central configurada
+exten => s,1,NoOp(Chamada entrante ${trunk} -> ${ivr})
+ same => n,Goto(${ivr},s,1)
+include => local-ramais
+`;
+
+  await upsertNamedBlock({
+    filePath: asteriskExtensionsCustomFile,
+    sectionName: trunk,
+    blockContent,
+    scope: "trunk-inbound-route",
+  });
+
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+export const removeTrunkInboundRoute = async ({
+  trunkContext,
+}: {
+  trunkContext: string;
+}) => {
+  const trunk = String(trunkContext || "").trim();
+  if (!trunk) return;
+
+  await removeNamedBlock({
+    filePath: asteriskExtensionsCustomFile,
+    sectionName: trunk,
+    scope: "trunk-inbound-route",
+  });
+
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────
 // Filas (Asterisk Queues) — queues_custom.conf
 // ─────────────────────────────────────────────────────────
 
@@ -522,7 +518,6 @@ const buildQueueBlock = ({
   if (announce) lines.push(`announce=${announce}`);
   for (const m of members) {
     lines.push(`member => SIP/${m.extensionNumber},${m.penalty}`);
-    lines.push(`member => PJSIP/${m.extensionNumber},${m.penalty}`);
   }
   return lines.join("\n");
 };

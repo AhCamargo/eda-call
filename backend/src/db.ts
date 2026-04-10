@@ -203,9 +203,9 @@ export const UraReverseCampaign = sequelize.define("UraReverseCampaign", {
     defaultValue: false,
   },
   dialTechnology: {
-    type: DataTypes.ENUM("PJSIP", "SIP"),
+    type: DataTypes.ENUM("SIP"),
     allowNull: false,
-    defaultValue: "PJSIP",
+    defaultValue: "SIP",
   },
 });
 
@@ -368,7 +368,7 @@ export const InboundIvr = sequelize.define("InboundIvr", {
     defaultValue: "Transbordo",
   },
   dialTechnology: {
-    type: DataTypes.ENUM("SIP", "PJSIP"),
+    type: DataTypes.ENUM("SIP"),
     allowNull: false,
     defaultValue: "SIP",
   },

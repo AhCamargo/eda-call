@@ -357,7 +357,6 @@ export default function Ramais() {
                 <TableHead className="text-zinc-400 w-10" />
                 <TableHead className="text-zinc-400">Número</TableHead>
                 <TableHead className="text-zinc-400">Nome</TableHead>
-                <TableHead className="text-zinc-400">Linha VoIP</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
                 <TableHead className="text-zinc-400">Senha SIP</TableHead>
                 <TableHead className="text-zinc-400 text-right">
@@ -369,7 +368,7 @@ export default function Ramais() {
               {sortedExtensions.length === 0 && (
                 <TableRow className="border-zinc-800">
                   <TableCell
-                    colSpan={7}
+                    colSpan={6}
                     className="text-center text-zinc-500 py-10"
                   >
                     Nenhum ramal cadastrado. Clique em "Novo ramal" para
@@ -391,13 +390,6 @@ export default function Ramais() {
                     {ext.number}
                   </TableCell>
                   <TableCell className="text-zinc-300">{ext.name}</TableCell>
-                  <TableCell className="text-zinc-400 text-sm">
-                    {ext.voipLineId ? (
-                      voipLineName(ext.voipLineId)
-                    ) : (
-                      <span className="text-zinc-600">—</span>
-                    )}
-                  </TableCell>
                   <TableCell>
                     <Badge
                       variant="outline"
