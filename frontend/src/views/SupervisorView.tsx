@@ -166,7 +166,7 @@ function AgentCard({ agent, onAction }) {
                   variant="outline"
                   className="flex-1 gap-1 border-zinc-700 text-zinc-400 hover:text-orange-400 hover:border-orange-500/40 hover:bg-orange-500/10 text-xs"
                   disabled={!isActive}
-                  onClick={() => onAction("takeover", agent)}
+                  onClick={() => onAction("barge", agent)}
                 >
                   <PhoneForwarded size={12} />
                   Assumir
@@ -206,37 +206,51 @@ function AgentCard({ agent, onAction }) {
 }
 
 export default function SupervisorView() {
-  const { statusCounts, extensions, fetchAll } = usePbx();
+  const { user, extensions, fetchAll } = usePbx();
+
+  const storageKey = `spy-ramal-${user?.id}`;
+  const [supervisorExt, setSupervisorExt] = useState(
+    () => localStorage.getItem(storageKey) ?? "",
+  );
+
+  useEffect(() => {
+    if (supervisorExt) localStorage.setItem(storageKey, supervisorExt);
+  }, [supervisorExt, storageKey]);
+
   const [actionDialog, setActionDialog] = useState<{
     type: string;
     agent: Extension;
   } | null>(null);
   const [pauseReason, setPauseReason] = useState(PAUSE_REASONS[0]);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    msg: string;
-    type: string;
-  } | null>(null);
+  const [feedback, setFeedback] = useState<{ msg: string; type: string } | null>(null);
 
-  const showFeedback = (msg, type = "ok") => {
+  const showFeedback = (msg: string, type = "ok") => {
     setFeedback({ msg, type });
-    setTimeout(() => setFeedback(null), 3000);
+    setTimeout(() => setFeedback(null), 4000);
   };
 
-  const handleAction = (type, agent) => {
+  const handleAction = (type: string, agent: Extension) => {
     if (type === "resume") {
       setLoading(true);
       api
         .post(`/supervisor/agents/${agent.id}/resume`)
-        .then(() => {
-          fetchAll();
-          showFeedback(`${agent.name} retomou atendimento`);
-        })
+        .then(() => { fetchAll(); showFeedback(`${agent.name} retomou atendimento`); })
         .catch(() => showFeedback("Erro ao retomar agente", "error"))
         .finally(() => setLoading(false));
       return;
     }
+    if ((type === "listen" || type === "whisper" || type === "barge") && !supervisorExt) {
+      showFeedback("Selecione seu ramal antes de monitorar uma chamada.", "error");
+      return;
+    }
     setActionDialog({ type, agent });
+  };
+
+  const SPY_MODE: Record<string, string> = {
+    listen:  "listen",
+    whisper: "whisper",
+    barge:   "barge",
   };
 
   const confirmAction = async () => {
@@ -245,26 +259,23 @@ export default function SupervisorView() {
     setLoading(true);
     try {
       if (type === "pause") {
-        await api.post(`/supervisor/agents/${agent.id}/force-pause`, {
-          reason: pauseReason,
-        });
+        await api.post(`/supervisor/agents/${agent.id}/force-pause`, { reason: pauseReason });
         await fetchAll();
         showFeedback(`${agent.name} colocado em pausa`);
-      } else if (type === "listen") {
-        showFeedback(
-          `Iniciando escuta do ramal ${agent.number}... (requer configuração Asterisk ChanSpy)`,
-        );
-      } else if (type === "whisper") {
-        showFeedback(
-          `Sussurrando para ${agent.name}... (requer configuração Asterisk ChanSpy)`,
-        );
-      } else if (type === "takeover") {
-        showFeedback(
-          `Assumindo chamada de ${agent.name}... (requer configuração Asterisk)`,
-        );
+      } else if (type === "listen" || type === "whisper" || type === "barge") {
+        await api.post(`/supervisor/agents/${agent.id}/spy`, {
+          supervisorExtension: supervisorExt,
+          mode: SPY_MODE[type],
+        });
+        const labels: Record<string, string> = {
+          listen:  `Escutando ramal ${agent.number} — atenda seu softphone.`,
+          whisper: `Sussurrando para ${agent.name} — atenda seu softphone.`,
+          barge:   `Assumindo chamada de ${agent.name} — atenda seu softphone.`,
+        };
+        showFeedback(labels[type]);
       }
-    } catch {
-      showFeedback("Erro ao executar ação", "error");
+    } catch (err: any) {
+      showFeedback(err?.response?.data?.message ?? "Erro ao executar ação.", "error");
     } finally {
       setLoading(false);
       setActionDialog(null);
@@ -301,7 +312,7 @@ export default function SupervisorView() {
       title: "🗣 Sussurrar para agente",
       desc: "Somente o agente ouvirá você. O cliente não saberá.",
     },
-    takeover: {
+    barge: {
       title: "📞 Assumir chamada",
       desc: "A chamada será transferida para você. O agente será desconectado.",
     },
@@ -314,14 +325,31 @@ export default function SupervisorView() {
   return (
     <div className="space-y-5 text-zinc-100">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-2">
           <Shield size={20} className="text-amber-400" />
           <h1 className="text-2xl font-bold tracking-tight">Supervisor</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-xs text-zinc-400">Tempo real</span>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-zinc-400 whitespace-nowrap">Meu ramal:</label>
+            <select
+              value={supervisorExt}
+              onChange={(e) => setSupervisorExt(e.target.value)}
+              className="h-8 rounded-md border border-zinc-700 bg-zinc-800 px-2 text-xs text-zinc-100 focus:outline-none focus:ring-1 focus:ring-zinc-500"
+            >
+              <option value="">— selecione —</option>
+              {extensions.map((ext) => (
+                <option key={ext.id} value={ext.number}>
+                  {ext.number}{ext.name ? ` — ${ext.name}` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs text-zinc-400">Tempo real</span>
+          </div>
         </div>
       </div>
 
@@ -505,7 +533,7 @@ export default function SupervisorView() {
                   onClick={confirmAction}
                   disabled={loading}
                   className={
-                    actionDialog.type === "takeover"
+                    actionDialog.type === "barge"
                       ? "bg-orange-600 hover:bg-orange-700"
                       : actionDialog.type === "pause"
                         ? "bg-amber-600 hover:bg-amber-700"

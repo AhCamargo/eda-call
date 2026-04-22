@@ -7,7 +7,7 @@ import { parse } from "csv-parse/sync";
 import { Server } from "socket.io";
 import { login, verifyToken } from "./auth";
 import config from "./config";
-import { originateReverseIvr, originateCall } from "./ami";
+import { originateReverseIvr, originateCall, getAmiClient } from "./ami";
 import { runCampaign } from "./services/campaignRunner";
 import {
   handleUraReverseDtmfEvent,
@@ -56,6 +56,19 @@ const campaignAudioDir = path.join(asteriskSoundsDir, "campaigns");
 if (!fs.existsSync(campaignAudioDir)) {
   fs.mkdirSync(campaignAudioDir, { recursive: true });
 }
+
+const uploadIvr = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav"];
+    if (allowed.includes(file.mimetype) || /\.(mp3|wav)$/i.test(file.originalname)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Apenas arquivos MP3 ou WAV são permitidos"));
+    }
+  },
+});
 
 const parseWavFormat = (buffer: Buffer) => {
   if (!buffer || buffer.length < 44) return null;
@@ -131,6 +144,22 @@ export const createRoutes = (io: Server) => {
     if (!user)
       return res.status(404).json({ message: "Usuário não encontrado" });
     return res.json(user);
+  });
+
+  // Altera senha do próprio usuário autenticado
+  router.patch("/auth/me/password", verifyToken, async (req: Request, res: Response) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword)
+      return res.status(400).json({ message: "Preencha todos os campos" });
+    if (String(newPassword).length < 6)
+      return res.status(400).json({ message: "A nova senha deve ter pelo menos 6 caracteres" });
+    const user = (await User.findByPk(req.user!.id)) as any;
+    if (!user) return res.status(404).json({ message: "Usuário não encontrado" });
+    const valid = bcrypt.compareSync(String(currentPassword), user.passwordHash);
+    if (!valid) return res.status(401).json({ message: "Senha atual incorreta" });
+    user.passwordHash = bcrypt.hashSync(String(newPassword), 10);
+    await user.save();
+    return res.json({ message: "Senha alterada com sucesso" });
   });
 
   // ── Middleware admin ────────────────────────────────────────────
@@ -253,6 +282,48 @@ export const createRoutes = (io: Server) => {
       await agent.save();
       io.emit("dashboard:update");
       return res.json({ ok: true });
+    },
+  );
+
+  router.post(
+    "/supervisor/agents/:id/spy",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const agent = (await Extension.findByPk(req.params.id as string)) as any;
+      if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
+
+      const { supervisorExtension, mode } = req.body;
+      if (!supervisorExtension) return res.status(400).json({ message: "Informe o ramal do supervisor" });
+
+      const modeMap: Record<string, string> = {
+        listen:  "q",   // só escuta
+        whisper: "qw",  // fala só com o agente
+        barge:   "B",   // todos ouvem todos
+      };
+      const spyMode = modeMap[mode] ?? "q";
+
+      try {
+        const ami = getAmiClient();
+        await new Promise<void>((resolve, reject) => {
+          ami.action(
+            {
+              Action:    "Originate",
+              Channel:   `SIP/${supervisorExtension}`,
+              Context:   "chanspy-supervisor",
+              Exten:     agent.number,
+              Priority:  1,
+              CallerID:  "Supervisor",
+              Timeout:   30000,
+              Variable:  `SPY_MODE=${spyMode}`,
+              Async:     "true",
+            },
+            (err: any) => (err ? reject(err) : resolve()),
+          );
+        });
+        return res.json({ ok: true });
+      } catch (err: any) {
+        return res.status(500).json({ message: "Erro ao originar chamada de monitoramento", detail: String(err) });
+      }
     },
   );
 
@@ -433,6 +504,31 @@ export const createRoutes = (io: Server) => {
 
     return res.status(201).json(campaign);
   });
+
+  router.patch(
+    "/ura-reverse/campaigns/:id",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(req.params.id as string)) as any;
+      if (!campaign) return res.status(404).json({ message: "Campanha não encontrada" });
+      const allowed = ["name", "voipLineId", "audioFile", "concurrentCalls",
+        "digitTimeoutSeconds", "maxAttempts", "retryIntervalSeconds", "callTimeoutSeconds"];
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) campaign[key] = req.body[key];
+      }
+      await campaign.save();
+      return res.json(campaign);
+    },
+  );
+
+  router.delete(
+    "/ura-reverse/campaigns/:id",
+    async (req: Request, res: Response) => {
+      const campaign = (await UraReverseCampaign.findByPk(req.params.id as string)) as any;
+      if (!campaign) return res.status(404).json({ message: "Campanha não encontrada" });
+      await campaign.destroy();
+      return res.json({ message: "Campanha removida" });
+    },
+  );
 
   router.post(
     "/ura-reverse/campaigns/:id/audio",
@@ -1791,7 +1887,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/queues/:id", async (req: Request, res: Response) => {
-    const queue = (await AsteriskQueue.findByPk(req.params.id, {
+    const queue = (await AsteriskQueue.findByPk(req.params.id as string, {
       include: [{ model: AsteriskQueueMember, as: "members" }],
     })) as any;
     if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
@@ -1847,7 +1943,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.put("/queues/:id", async (req: Request, res: Response) => {
-    const queue = (await AsteriskQueue.findByPk(req.params.id, {
+    const queue = (await AsteriskQueue.findByPk(req.params.id as string, {
       include: [{ model: AsteriskQueueMember, as: "members" }],
     })) as any;
     if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
@@ -1896,7 +1992,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/queues/:id", async (req: Request, res: Response) => {
-    const queue = (await AsteriskQueue.findByPk(req.params.id)) as any;
+    const queue = (await AsteriskQueue.findByPk(req.params.id as string)) as any;
     if (!queue) return res.status(404).json({ message: "Fila não encontrada" });
 
     await removeQueue({ name: queue.name });
@@ -1904,6 +2000,134 @@ export const createRoutes = (io: Server) => {
     await queue.destroy();
     return res.json({ message: "Fila removida com sucesso" });
   });
+
+  // ── Áudios URA (gerenciador de sons) ────────────────────────────────────
+
+  router.get(
+    "/sounds",
+    verifyToken,
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const entries = fs.readdirSync(asteriskSoundsDir, { withFileTypes: true });
+        const files = entries
+          .filter((e) => e.isFile() && /\.(mp3|wav)$/i.test(e.name))
+          .map((e) => {
+            const filePath = path.join(asteriskSoundsDir, e.name);
+            const stat = fs.statSync(filePath);
+            const nameNoExt = e.name.replace(/\.(mp3|wav)$/i, "");
+            return {
+              filename: e.name,
+              asteriskPath: `custom/${nameNoExt}`,
+              size: stat.size,
+              uploadedAt: stat.mtime,
+            };
+          })
+          .sort((a, b) => b.uploadedAt.getTime() - a.uploadedAt.getTime());
+        return res.json(files);
+      } catch (err) {
+        return res.status(500).json({ message: "Erro ao listar áudios" });
+      }
+    },
+  );
+
+  router.get(
+    "/sounds/stream/:filename",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const filename = req.params.filename as string;
+      if (!/^[a-z0-9._-]+\.(mp3|wav)$/i.test(filename)) {
+        return res.status(400).json({ message: "Nome de arquivo inválido" });
+      }
+      const filePath = path.join(asteriskSoundsDir, filename);
+      const safePath = path.resolve(filePath);
+      if (!safePath.startsWith(path.resolve(asteriskSoundsDir))) {
+        return res.status(400).json({ message: "Acesso negado" });
+      }
+      if (!fs.existsSync(safePath)) {
+        return res.status(404).json({ message: "Arquivo não encontrado" });
+      }
+      const ext = path.extname(filename).toLowerCase();
+      const mimeType = ext === ".mp3" ? "audio/mpeg" : "audio/wav";
+      res.setHeader("Content-Type", mimeType);
+      res.setHeader("Accept-Ranges", "bytes");
+      fs.createReadStream(safePath).pipe(res);
+    },
+  );
+
+  router.post(
+    "/sounds/upload",
+    verifyToken,
+    requireAdmin,
+    uploadIvr.single("audio"),
+    async (req: Request, res: Response) => {
+      if (!req.file) return res.status(400).json({ message: "Nenhum arquivo enviado" });
+
+      const originalName = req.file.originalname
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9._-]/g, "-")
+        .replace(/-+/g, "-");
+
+      const destPath = path.join(asteriskSoundsDir, originalName);
+      const safePath = path.resolve(destPath);
+      if (!safePath.startsWith(path.resolve(asteriskSoundsDir))) {
+        return res.status(400).json({ message: "Nome de arquivo inválido" });
+      }
+
+      fs.writeFileSync(safePath, req.file.buffer);
+      const nameNoExt = originalName.replace(/\.(mp3|wav)$/i, "");
+      return res.json({
+        message: "Áudio enviado com sucesso",
+        filename: originalName,
+        asteriskPath: `custom/${nameNoExt}`,
+      });
+    },
+  );
+
+  router.delete(
+    "/sounds/:filename",
+    verifyToken,
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      const filename = req.params.filename as string;
+      if (!/^[a-z0-9._-]+\.(mp3|wav)$/i.test(filename)) {
+        return res.status(400).json({ message: "Nome de arquivo inválido" });
+      }
+      const filePath = path.join(asteriskSoundsDir, filename);
+      const safePath = path.resolve(filePath);
+      if (!safePath.startsWith(path.resolve(asteriskSoundsDir))) {
+        return res.status(400).json({ message: "Acesso negado" });
+      }
+      if (!fs.existsSync(safePath)) {
+        return res.status(404).json({ message: "Arquivo não encontrado" });
+      }
+      fs.unlinkSync(safePath);
+      return res.json({ message: "Áudio removido com sucesso" });
+    },
+  );
+
+  router.post(
+    "/sounds/dialplan-reload",
+    verifyToken,
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const ami = getAmiClient();
+        await new Promise<void>((resolve, reject) => {
+          ami.action({ Action: "Command", Command: "dialplan reload" }, (err: any) => {
+            if (err) return reject(err);
+            resolve();
+          });
+        });
+        return res.json({ message: "Dialplan recarregado com sucesso" });
+      } catch {
+        return res.status(500).json({ message: "Erro ao recarregar dialplan" });
+      }
+    },
+  );
 
   // ── Central Telefônica (URA Receptiva) ─────────────────────────────────
 
@@ -1916,7 +2140,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.get("/inbound-ivr/:id", async (req: Request, res: Response) => {
-    const ivr = (await InboundIvr.findByPk(req.params.id, {
+    const ivr = (await InboundIvr.findByPk(req.params.id as string, {
       include: [{ model: InboundIvrOption, as: "options" }],
     })) as any;
     if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
@@ -1992,7 +2216,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.put("/inbound-ivr/:id", async (req: Request, res: Response) => {
-    const ivr = (await InboundIvr.findByPk(req.params.id, {
+    const ivr = (await InboundIvr.findByPk(req.params.id as string, {
       include: [{ model: InboundIvrOption, as: "options" }],
     })) as any;
     if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
@@ -2069,7 +2293,7 @@ export const createRoutes = (io: Server) => {
   });
 
   router.delete("/inbound-ivr/:id", async (req: Request, res: Response) => {
-    const ivr = (await InboundIvr.findByPk(req.params.id)) as any;
+    const ivr = (await InboundIvr.findByPk(req.params.id as string)) as any;
     if (!ivr) return res.status(404).json({ message: "IVR não encontrado" });
 
     if (ivr.voipLineId) {

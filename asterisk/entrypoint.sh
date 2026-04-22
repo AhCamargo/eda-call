@@ -11,10 +11,6 @@ if [ ! -f /etc/asterisk-custom/extensions_custom.conf ]; then
   touch /etc/asterisk-custom/extensions_custom.conf
 fi
 
-if [ ! -f /etc/asterisk-custom/pjsip_custom.conf ]; then
-  touch /etc/asterisk-custom/pjsip_custom.conf
-fi
-
 if [ ! -f /etc/asterisk-custom/queues_custom.conf ]; then
   touch /etc/asterisk-custom/queues_custom.conf
 fi
@@ -26,11 +22,6 @@ fi
 # Copia http.conf para habilitar servidor HTTP/WebSocket (WebRTC)
 if [ -f /etc/asterisk-custom/http.conf ]; then
   cp /etc/asterisk-custom/http.conf /etc/asterisk/http.conf
-fi
-
-# Copia pjsip_base.conf como pjsip.conf (ponto de entrada do PJSIP)
-if [ -f /etc/asterisk-custom/pjsip_base.conf ]; then
-  cp /etc/asterisk-custom/pjsip_base.conf /etc/asterisk/pjsip.conf
 fi
 
 # Garante que rtp.conf tem o range correto para os ports expostos no Docker
@@ -53,7 +44,7 @@ fi
 
 # Gera /etc/asterisk/sip_nat_runtime.conf com o externip correto (não modifica arquivos do volume)
 EXTERN_IP="${ASTERISK_EXTERN_IP:-127.0.0.1}"
-EFIX_REGISTER="${ASTERISK_EFIX_REGISTER:-}"
+EDACALL_REGISTER="${ASTERISK_EDACALL_REGISTER:-}"
 
 cat > /etc/asterisk/sip_nat_runtime.conf << EOF
 ; Gerado automaticamente pelo entrypoint — não editar manualmente
@@ -70,9 +61,9 @@ bindaddr=0.0.0.0
 nat=force_rport
 EOF
 
-# Adiciona linha de registro SIP se ASTERISK_EFIX_REGISTER estiver definida
-if [ -n "${EFIX_REGISTER}" ]; then
-  printf "\nregister => ${EFIX_REGISTER}:5060\n" >> /etc/asterisk/sip_nat_runtime.conf
+# Adiciona linha de registro SIP se ASTERISK_EDACALL_REGISTER estiver definida
+if [ -n "${EDACALL_REGISTER}" ]; then
+  printf "\nregister => ${EDACALL_REGISTER}:5060\n" >> /etc/asterisk/sip_nat_runtime.conf
 fi
 
 if [ -f /etc/asterisk/sip.conf ]; then

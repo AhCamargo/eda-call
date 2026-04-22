@@ -60,10 +60,17 @@ function CallTimer({ startTime }: { startTime: number }) {
 }
 
 export default function AgentView() {
-  const { extensions, reportCallsByExtension, pauseExtension, resumeExtension } = usePbx();
+  const { user, extensions, reportCallsByExtension, pauseExtension, resumeExtension } = usePbx();
 
-  const [selectedExtId, setSelectedExtId] = useState('');
+  const storageKey = `meu-ramal-${user?.id}`;
+  const [selectedExtId, setSelectedExtId] = useState(
+    () => localStorage.getItem(storageKey) ?? '',
+  );
   const [pauseReason, setPauseReason] = useState(PAUSE_REASONS[0].value);
+
+  useEffect(() => {
+    if (selectedExtId) localStorage.setItem(storageKey, selectedExtId);
+  }, [selectedExtId, storageKey]);
   const [callStartTime, setCallStartTime] = useState(Date.now());
   const [sipOptions, setSipOptions] = useState<SipClientOptions | null>(null);
   const [transferTarget, setTransferTarget] = useState('');

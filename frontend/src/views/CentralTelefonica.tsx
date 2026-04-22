@@ -497,7 +497,7 @@ export default function CentralTelefonica() {
             Central Telefônica
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            URAs receptivas — configuradas no Asterisk automaticamente
+            URAs receptivas
           </p>
         </div>
         <div className="flex gap-2">

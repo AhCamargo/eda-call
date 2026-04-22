@@ -16,10 +16,6 @@ if [ ! -f /etc/asterisk-custom/extensions_custom.conf ]; then
   touch /etc/asterisk-custom/extensions_custom.conf
 fi
 
-if [ ! -f /etc/asterisk-custom/pjsip_custom.conf ]; then
-  touch /etc/asterisk-custom/pjsip_custom.conf
-fi
-
 if [ ! -f /etc/asterisk-custom/queues_custom.conf ]; then
   touch /etc/asterisk-custom/queues_custom.conf
 fi
@@ -31,11 +27,6 @@ fi
 # Copia http.conf para habilitar servidor HTTP/WebSocket (WebRTC)
 if [ -f /etc/asterisk-custom/http.conf ]; then
   cp /etc/asterisk-custom/http.conf /etc/asterisk/http.conf
-fi
-
-# Copia pjsip_base.conf como pjsip.conf (ponto de entrada do PJSIP)
-if [ -f /etc/asterisk-custom/pjsip_base.conf ]; then
-  cp /etc/asterisk-custom/pjsip_base.conf /etc/asterisk/pjsip.conf
 fi
 
 # Garante que rtp.conf tem o range correto para os ports expostos no Docker

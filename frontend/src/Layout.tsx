@@ -22,6 +22,7 @@ import {
   PhoneOutgoing,
   Building2,
   ListFilter,
+  FolderOpen,
 } from "lucide-react";
 
 const EXPANDED: number = 240;
@@ -123,7 +124,7 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         },
         {
           to: "/usuario",
-          label: t("menu.user"),
+          label: "Meu Perfil",
           icon: User,
           iconColor: "#94a3b8",
         },
@@ -200,7 +201,7 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
 
   const centralItems = useMemo<NavItem[]>(() => {
     if (role === "agent") return [];
-    return [
+    const items: NavItem[] = [
       {
         to: "/central-telefonica",
         label: "Central Telefônica",
@@ -214,6 +215,15 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         iconColor: "#34d399",
       },
     ];
+    if (role === "admin") {
+      items.push({
+        to: "/audios-ura",
+        label: "Áudios URA",
+        icon: FolderOpen,
+        iconColor: "#fb923c",
+      });
+    }
+    return items;
   }, [role]);
 
   const campaignItems = useMemo<NavItem[]>(() => {

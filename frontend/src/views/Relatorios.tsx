@@ -260,7 +260,7 @@ export default function Relatorios() {
 
       {/* Tabs */}
       <Tabs defaultValue="ramal">
-        <TabsList className="bg-zinc-800 border border-zinc-700 h-auto p-1">
+        <TabsList className=" gap-3.5 bg-zinc-800 border border-zinc-700 h-auto p-1">
           <TabsTrigger
             value="ramal"
             className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"

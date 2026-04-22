@@ -1,15 +1,28 @@
-FROM node:22-alpine3.22
+FROM node:22-alpine AS builder
 
 RUN apk upgrade --no-cache
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml* ./
-RUN corepack enable && pnpm install --frozen-lockfile --prod
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY . .
+RUN pnpm exec tsc
+
+# ── Runtime ──────────────────────────────────────────────────────────────────
+FROM node:22-alpine
+
+RUN apk upgrade --no-cache
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile --prod
+
+COPY --from=builder /app/dist ./dist
 
 ENV NODE_ENV=production
 EXPOSE 5000
 
-CMD ["pnpm", "start"]
+CMD ["node", "dist/server.js"]
