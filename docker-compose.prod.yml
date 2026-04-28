@@ -52,16 +52,16 @@ services:
       AMI_PORT: 5038
       AMI_USERNAME: ${AMI_USERNAME:-admin}
       AMI_PASSWORD: ${AMI_PASSWORD}
-      ASTERISK_SIP_CUSTOM_FILE: /asterisk-config/sip_custom.conf
-      ASTERISK_EXTENSIONS_CUSTOM_FILE: /asterisk-config/extensions_custom.conf
-      ASTERISK_QUEUES_CUSTOM_FILE: /asterisk-config/queues_custom.conf
+      ASTERISK_SIP_CUSTOM_FILE: /etc/asterisk-custom/sip_custom.conf
+      ASTERISK_EXTENSIONS_CUSTOM_FILE: /etc/asterisk-custom/extensions_custom.conf
+      ASTERISK_QUEUES_CUSTOM_FILE: /etc/asterisk-custom/queues_custom.conf
       ASTERISK_RECORDINGS_DIR: /asterisk-recordings
       ASTERISK_SOUNDS_DIR: /asterisk-sounds
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     ports:
       - "5000:5000"
     volumes:
-      - asterisk_config:/asterisk-config
+      - asterisk_config:/etc/asterisk-custom
       - asterisk_recordings:/asterisk-recordings
       - asterisk_sounds:/asterisk-sounds
     restart: unless-stopped

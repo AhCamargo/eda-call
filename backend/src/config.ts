@@ -10,13 +10,14 @@ const config = {
     process.env.ASTERISK_RECORDINGS_DIR || "/asterisk-recordings",
   asteriskSoundsDir: process.env.ASTERISK_SOUNDS_DIR || "/asterisk-sounds",
   asteriskSipCustomFile:
-    process.env.ASTERISK_SIP_CUSTOM_FILE || "/asterisk-config/sip_custom.conf",
+    process.env.ASTERISK_SIP_CUSTOM_FILE ||
+    "/etc/asterisk-custom/sip_custom.conf",
   asteriskExtensionsCustomFile:
     process.env.ASTERISK_EXTENSIONS_CUSTOM_FILE ||
-    "/asterisk-config/extensions_custom.conf",
+    "/etc/asterisk-custom/extensions_custom.conf",
   asteriskQueuesCustomFile:
     process.env.ASTERISK_QUEUES_CUSTOM_FILE ||
-    "/asterisk-config/queues_custom.conf",
+    "/etc/asterisk-custom/queues_custom.conf",
   asteriskWsUrl: process.env.ASTERISK_WS_URL || "ws://localhost:8088/ws",
   ami: {
     host: process.env.AMI_HOST || "asterisk",
