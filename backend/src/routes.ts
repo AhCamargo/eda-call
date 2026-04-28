@@ -287,7 +287,7 @@ export const createRoutes = (io: Server) => {
     verifyToken,
     requireAdmin,
     async (req: Request, res: Response) => {
-      const { ip } = req.params;
+      const ip = String(req.params.ip);
       if (!/^[\d.a-fA-F:]+$/.test(ip))
         return res.status(400).json({ message: "IP inválido" });
       try {
