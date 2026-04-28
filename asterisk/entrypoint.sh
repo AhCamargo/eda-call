@@ -59,6 +59,8 @@ rtpend=10099
 directmedia=no
 bindaddr=0.0.0.0
 nat=force_rport
+allowguest=no
+alwaysauthreject=yes
 EOF
 
 # Adiciona linha de registro SIP se ASTERISK_EDACALL_REGISTER estiver definida

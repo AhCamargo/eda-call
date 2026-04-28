@@ -41,6 +41,36 @@ if [ -f /etc/asterisk/rtp.conf ]; then
   fi
 fi
 
+EXTERN_IP="${ASTERISK_EXTERN_IP:-}"
+EDACALL_REGISTER="${ASTERISK_EFIX_REGISTER:-}"
+
+cat > /etc/asterisk/sip_nat_runtime.conf << EOF
+; Gerado automaticamente pelo entrypoint — não editar manualmente
+[general]
+externip=${EXTERN_IP}
+localnet=127.0.0.0/8
+localnet=10.0.0.0/8
+localnet=172.16.0.0/12
+localnet=192.168.0.0/16
+rtpstart=10000
+rtpend=10099
+directmedia=no
+bindaddr=0.0.0.0
+nat=force_rport
+allowguest=no
+alwaysauthreject=yes
+EOF
+
+if [ -n "${EDACALL_REGISTER}" ]; then
+  printf "\nregister => ${EDACALL_REGISTER}:5060\n" >> /etc/asterisk/sip_nat_runtime.conf
+fi
+
+if [ -f /etc/asterisk/sip.conf ]; then
+  if ! grep -q "sip_nat_runtime.conf" /etc/asterisk/sip.conf; then
+    sed -i '1s/^/#include \/etc\/asterisk\/sip_nat_runtime.conf\n/' /etc/asterisk/sip.conf
+  fi
+fi
+
 if [ -f /etc/asterisk/sip.conf ]; then
   if ! grep -q "#include /etc/asterisk-custom/sip_custom.conf" /etc/asterisk/sip.conf; then
     printf "\n#include /etc/asterisk-custom/sip_custom.conf\n" >> /etc/asterisk/sip.conf

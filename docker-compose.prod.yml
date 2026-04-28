@@ -31,6 +31,7 @@ services:
       - asterisk_config:/etc/asterisk-custom
       - asterisk_recordings:/var/spool/asterisk/monitor
       - asterisk_sounds:/var/lib/asterisk/sounds/custom
+      - ./asterisk/logs:/var/log/asterisk
     restart: unless-stopped
 
   backend:
@@ -64,6 +65,7 @@ services:
       - asterisk_config:/etc/asterisk-custom
       - asterisk_recordings:/asterisk-recordings
       - asterisk_sounds:/asterisk-sounds
+      - /var/run/fail2ban/fail2ban.sock:/var/run/fail2ban/fail2ban.sock
     restart: unless-stopped
 
   frontend:

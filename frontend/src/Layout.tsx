@@ -23,6 +23,7 @@ import {
   Building2,
   ListFilter,
   FolderOpen,
+  ShieldAlert,
 } from "lucide-react";
 
 const EXPANDED: number = 240;
@@ -221,6 +222,12 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         label: "Áudios URA",
         icon: FolderOpen,
         iconColor: "#fb923c",
+      });
+      items.push({
+        to: "/seguranca",
+        label: "Segurança SIP",
+        icon: ShieldAlert,
+        iconColor: "#ef4444",
       });
     }
     return items;

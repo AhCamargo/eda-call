@@ -21,6 +21,7 @@ import Usuarios from "./views/Usuarios";
 import CentralTelefonica from "./views/CentralTelefonica";
 import Filas from "./views/Filas";
 import GerenciadorAudios from "./views/GerenciadorAudios";
+import Seguranca from "./views/Seguranca";
 import { PbxProvider } from "./context/PbxContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -207,6 +208,9 @@ function App(): JSX.Element {
               <Route path="/filas" element={<Filas />} />
               {user?.role === "admin" && (
                 <Route path="/audios-ura" element={<GerenciadorAudios />} />
+              )}
+              {user?.role === "admin" && (
+                <Route path="/seguranca" element={<Seguranca />} />
               )}
               <Route path="/linhas-voip" element={<LinhasVoip />} />
               <Route path="/gravacoes" element={<Gravacoes />} />
