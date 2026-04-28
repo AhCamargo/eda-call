@@ -1,0 +1,55 @@
+# ──────────────────────────────────────────────────────────────────────────────
+# EdaCall · Stack Asterisk (Coolify)
+# Build context aponta para ../../asterisk para reaproveitar Dockerfile.prod.
+# Publica AMI/SIP/RTP direto no host (n�o passa pelo Traefik do Coolify).
+# Volumes nomeados s�o externos para permitir que a stack do backend leia o
+# mesmo conte�do (config / recordings / sounds) no mesmo host.
+# ──────────────────────────────────────────────────────────────────────────────
+services:
+  asterisk:
+    build:
+      context: ../../asterisk
+      dockerfile: Dockerfile.prod
+    container_name: edacall_asterisk
+    restart: unless-stopped
+    environment:
+      ASTERISK_EXTERN_IP: ${ASTERISK_EXTERN_IP}
+      ASTERISK_EFIX_REGISTER: ${ASTERISK_EFIX_REGISTER:-}
+    ports:
+      # AMI (Asterisk Manager Interface) — usado pelo backend
+      - "5038:5038/tcp"
+      # SIP UDP — registro no tronco e ramais SIP
+      - "5060:5060/udp"
+      # RTP — m�dia de �udio (precisa da faixa toda exposta)
+      - "10000-10099:10000-10099/udp"
+    volumes:
+      - asterisk_config:/etc/asterisk-custom
+      - asterisk_recordings:/var/spool/asterisk/monitor
+      - asterisk_sounds:/var/lib/asterisk/sounds/custom
+    networks:
+      - edacall
+    healthcheck:
+      test: ["CMD", "asterisk", "-rx", "core show uptime"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# Volumes externos: criados uma �nica vez no host (ver DEPLOY.md).
+# A stack do backend referencia esses mesmos volumes como `external: true`.
+volumes:
+  asterisk_config:
+    external: true
+    name: edacall_asterisk_config
+  asterisk_recordings:
+    external: true
+    name: edacall_asterisk_recordings
+  asterisk_sounds:
+    external: true
+    name: edacall_asterisk_sounds
+
+# Rede externa compartilhada por todas as stacks do EdaCall.
+networks:
+  edacall:
+    external: true
+    name: edacall
