@@ -15,7 +15,7 @@ const buildExtensionBlock = (
   voipLineName: string | null = null,
 ) => {
   const setvarLine = voipLineName ? `setvar=VOIPLINE=${voipLineName}\n` : "";
-  return `\n[${number}]\ntype=friend\nhost=dynamic\nsecret=${secret}\ncontext=${context}\n${setvarLine}disallow=all\nallow=ulaw\nallow=alaw\ndtmfmode=rfc2833\nnat=force_rport,comedia\ndirectmedia=no\nqualify=yes\nqualifyfreq=30\n\n`;
+  return `\n[${number}]\ntype=friend\nhost=dynamic\nsecret=${secret}\ncontext=${context}\n${setvarLine}disallow=all\nallow=ulaw\nallow=alaw\ndtmfmode=rfc2833\ndirectmedia=no\nqualify=yes\nqualifyfreq=30\n\n`;
 };
 
 const buildSipVoipLineBlock = ({
@@ -76,7 +76,7 @@ const buildSipVoipLineBlock = ({
 type=${type}
 host=${host}
 port=${port}
-username=${username}
+defaultuser=${username}
 fromuser=${username}
 ${fromdomainLine}
 secret=${secret}
@@ -86,7 +86,6 @@ disallow=all
 ${allowLines}
 ${insecureLine}
 qualify=yes
-nat=force_rport,comedia
 directmedia=no
 dtmfmode=${dtmfmode}
 ${callLimitLine}
