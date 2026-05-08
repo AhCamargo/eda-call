@@ -65,10 +65,9 @@ const buildSipVoipLineBlock = ({
   // call-limit (0 = sem limite, não escreve a linha)
   const callLimitLine = callLimit > 0 ? `call-limit=${callLimit}` : "";
 
-  // Se definido, adiciona contexto de entrada (inboundContext) comentado para referência
-  const inboundContextComment = inboundContext
-    ? `; Contexto de entrada (URA/receptivo): ${inboundContext}`
-    : "";
+  // Chamadas entrantes do tronco usam o inboundContext (contexto do IVR receptivo).
+  // Chamadas saintes dos ramais usam o próprio context do ramal, não do tronco.
+  const effectiveContext = inboundContext || context;
 
   return (
     `
@@ -80,8 +79,7 @@ defaultuser=${username}
 fromuser=${username}
 ${fromdomainLine}
 secret=${secret}
-context=${context}
-${inboundContextComment}
+context=${effectiveContext}
 disallow=all
 ${allowLines}
 ${insecureLine}
@@ -444,7 +442,11 @@ export const upsertTrunkInboundRoute = async ({
   const blockContent = `
 [${trunk}]
 ; Inbound do tronco: roteia para a central configurada
+; exten => s captura quando o provedor não envia o DID
 exten => s,1,NoOp(Chamada entrante ${trunk} -> ${ivr})
+ same => n,Goto(${ivr},s,1)
+; exten => _. captura quando o provedor envia o número DID como destino
+exten => _.,1,NoOp(Chamada entrante ${trunk} DID:\${EXTEN} -> ${ivr})
  same => n,Goto(${ivr},s,1)
 include => local-ramais
 `;

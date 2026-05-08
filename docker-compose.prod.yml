@@ -37,28 +37,34 @@ services:
       ASTERISK_SIP_CUSTOM_FILE: /etc/asterisk-custom/sip_custom.conf
       ASTERISK_EXTENSIONS_CUSTOM_FILE: /etc/asterisk-custom/extensions_custom.conf
       ASTERISK_QUEUES_CUSTOM_FILE: /etc/asterisk-custom/queues_custom.conf
+      ASTERISK_SIP_NAT_FILE: /etc/asterisk/sip_nat_runtime.conf
       ASTERISK_RECORDINGS_DIR: /asterisk-recordings
       ASTERISK_SOUNDS_DIR: /asterisk-sounds
     ports:
       - "5000:5000"
     volumes:
       - /etc/asterisk-custom:/etc/asterisk-custom
+      - /etc/asterisk/sip_nat_runtime.conf:/etc/asterisk/sip_nat_runtime.conf
       - /var/spool/asterisk/monitor:/asterisk-recordings
       - /var/lib/asterisk/sounds/custom:/asterisk-sounds
+      - edacall_config:/edacall-config
     restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile.prod
-      args:
-        VITE_API_URL: ${VITE_API_URL}
     container_name: edacall_frontend
     depends_on:
       - backend
+    environment:
+      API_URL: ${VITE_API_URL}
     ports:
       - "80:80"
+    volumes:
+      - edacall_config:/edacall-config
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  edacall_config:

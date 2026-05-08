@@ -8,6 +8,9 @@ const config = {
   asteriskRecordingsDir:
     process.env.ASTERISK_RECORDINGS_DIR || "/asterisk-recordings",
   asteriskSoundsDir: process.env.ASTERISK_SOUNDS_DIR || "/asterisk-sounds",
+  asteriskSipNatFile:
+    process.env.ASTERISK_SIP_NAT_FILE || "/etc/asterisk/sip_nat_runtime.conf",
+  serverConfigDir: process.env.SERVER_CONFIG_DIR || "/edacall-config",
   asteriskSipCustomFile:
     process.env.ASTERISK_SIP_CUSTOM_FILE ||
     "/etc/asterisk-custom/sip_custom.conf",

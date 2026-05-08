@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 import config from "../config";
-import { CallRecording } from "../db";
+import { CallRecording, Extension } from "../db";
 
 const { asteriskRecordingsDir } = config;
 
@@ -34,10 +34,16 @@ const collectWavFiles = async (dirPath: string): Promise<string[]> => {
   return files.flat();
 };
 
-const getUniqueIdFromFilename = (filePath: string) => {
+// Filename format from dialplan: YYYYMMDD-HHMMSS-UNIQUEID-CALLER-CALLEE.wav
+const parseRecordingFilename = (filePath: string) => {
   const base = path.basename(filePath, path.extname(filePath));
   const parts = base.split("-");
-  return parts.length >= 2 ? parts[1] : null;
+  // parts[0]=date, parts[1]=time, parts[2]=uniqueid, parts[3]=caller, parts[4]=callee
+  return {
+    uniqueId: parts.length >= 3 ? parts[2] : null,
+    callerNumber: parts.length >= 4 ? parts[3] : null,
+    calleeNumber: parts.length >= 5 ? parts[4] : null,
+  };
 };
 
 const syncRecordingsFromDisk = async () => {
@@ -63,10 +69,20 @@ const syncRecordingsFromDisk = async () => {
       continue;
     }
 
+    const { uniqueId, callerNumber, calleeNumber } = parseRecordingFilename(filePath);
+
+    let extensionId: number | null = null;
+    const extNumber = callerNumber || calleeNumber;
+    if (extNumber) {
+      const ext = await (Extension as any).findOne({ where: { number: extNumber } }) as any;
+      if (ext) extensionId = ext.id;
+    }
+
     await CallRecording.create({
       filePath,
       durationSeconds: 0,
-      callUniqueId: getUniqueIdFromFilename(filePath),
+      callUniqueId: uniqueId,
+      extensionId,
       createdAt: stat.birthtime || new Date(),
       updatedAt: new Date(),
     });

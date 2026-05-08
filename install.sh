@@ -155,6 +155,10 @@ cp asterisk/config/manager.conf /etc/asterisk/manager.conf
 sed -i "s/^secret\s*=.*/secret = ${AMI_PASSWORD}/" /etc/asterisk/manager.conf
 ok "manager.conf atualizado com senha AMI gerada"
 
+# cdr_manager.conf — habilita envio de eventos CDR pelo AMI (relatórios de chamadas)
+cp asterisk/config/cdr_manager.conf /etc/asterisk/cdr_manager.conf
+ok "cdr_manager.conf configurado"
+
 # sip_nat_runtime.conf — configura IP externo e RTP
 cat > /etc/asterisk/sip_nat_runtime.conf << SIPEOF
 ; Gerado pelo instalador EDACall — não editar manualmente
@@ -228,6 +232,16 @@ ok "Áudios de URA gerados"
 
 # Ajusta permissões para o Asterisk acessar os diretórios de gravações e sons
 chown -R asterisk:asterisk /var/spool/asterisk /var/lib/asterisk/sounds/custom 2>/dev/null || true
+
+# Unifica os diretórios de sons: Asterisk escreve em /usr/share/asterisk/sounds/custom
+# mas o backend lê de /var/lib/asterisk/sounds/custom. Um symlink resolve isso.
+if [[ -d /usr/share/asterisk/sounds/custom && ! -L /usr/share/asterisk/sounds/custom ]]; then
+  cp -rn /usr/share/asterisk/sounds/custom/. /var/lib/asterisk/sounds/custom/ 2>/dev/null || true
+  rm -rf /usr/share/asterisk/sounds/custom
+fi
+ln -sfn /var/lib/asterisk/sounds/custom /usr/share/asterisk/sounds/custom
+chown -h asterisk:asterisk /usr/share/asterisk/sounds/custom 2>/dev/null || true
+ok "Symlink de áudios configurado"
 
 # Inicia e habilita o Asterisk no boot
 systemctl enable asterisk

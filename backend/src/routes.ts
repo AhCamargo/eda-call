@@ -922,13 +922,21 @@ export const createRoutes = (io: Server) => {
     const password = sipPassword || generateRandomPassword();
 
     // Salva ramal com senha persistida
-    const extension = (await Extension.create({
-      number: normalizedNumber,
-      name,
-      password,
-      status: "offline",
-      voipLineId: voipLineId ? Number(voipLineId) : null,
-    })) as any;
+    let extension: any;
+    try {
+      extension = await Extension.create({
+        number: normalizedNumber,
+        name,
+        password,
+        status: "offline",
+        voipLineId: voipLineId ? Number(voipLineId) : null,
+      });
+    } catch (error: any) {
+      if (error.name === "SequelizeUniqueConstraintError") {
+        return res.status(409).json({ message: "Já existe um ramal com esse número." });
+      }
+      throw error;
+    }
 
     try {
       // determine context from associated VoIP line (if provided)
@@ -1281,22 +1289,30 @@ export const createRoutes = (io: Server) => {
       insecure = "invite,port",
     } = req.body;
 
-    const line = await VoipLine.create({
-      name,
-      username,
-      secret,
-      host,
-      port,
-      context,
-      inboundContext,
-      transport,
-      type,
-      dtmfmode,
-      fromdomain,
-      codecs,
-      callLimit,
-      insecure,
-    });
+    let line: any;
+    try {
+      line = await VoipLine.create({
+        name,
+        username,
+        secret,
+        host,
+        port,
+        context,
+        inboundContext,
+        transport,
+        type,
+        dtmfmode,
+        fromdomain,
+        codecs,
+        callLimit,
+        insecure,
+      });
+    } catch (error: any) {
+      if (error.name === "SequelizeUniqueConstraintError") {
+        return res.status(409).json({ message: "Já existe uma linha VoIP com esse nome." });
+      }
+      throw error;
+    }
 
     try {
       await upsertSipVoipLine({
@@ -2364,6 +2380,67 @@ export const createRoutes = (io: Server) => {
     await InboundIvrOption.destroy({ where: { ivrId: ivr.id } });
     await ivr.destroy();
     return res.json({ message: "IVR removido com sucesso" });
+  });
+
+  // ── Configurações do servidor ───────────────────────────────────────────────
+
+  const readExternIp = (): string => {
+    try {
+      const content = fs.readFileSync(config.asteriskSipNatFile, "utf-8");
+      const match = content.match(/^externip\s*=\s*(.+)$/m);
+      return match ? match[1].trim() : "";
+    } catch {
+      return "";
+    }
+  };
+
+  const readApiUrl = (): string => {
+    try {
+      const file = path.join(config.serverConfigDir, "api_url");
+      if (fs.existsSync(file)) return fs.readFileSync(file, "utf-8").trim();
+    } catch {}
+    return "";
+  };
+
+  router.get("/settings", requireAdmin, (_req: Request, res: Response) => {
+    return res.json({
+      serverIp: readExternIp(),
+      apiUrl: readApiUrl(),
+    });
+  });
+
+  router.patch("/settings", requireAdmin, async (req: Request, res: Response) => {
+    const { serverIp, apiUrl } = req.body;
+
+    if (serverIp) {
+      if (!/^[\d.a-fA-F:]+$/.test(serverIp)) {
+        return res.status(400).json({ message: "IP inválido" });
+      }
+
+      try {
+        let content = fs.readFileSync(config.asteriskSipNatFile, "utf-8");
+        content = content.replace(/^externip\s*=.*$/m, `externip=${serverIp}`);
+        fs.writeFileSync(config.asteriskSipNatFile, content, "utf-8");
+
+        const ami = getAmiClient();
+        await new Promise<void>((resolve) => {
+          ami.action({ Action: "Command", Command: "sip reload" }, () => resolve());
+        });
+      } catch (err: any) {
+        return res.status(500).json({ message: "Erro ao atualizar IP do Asterisk", detail: err.message });
+      }
+    }
+
+    if (apiUrl !== undefined) {
+      try {
+        fs.mkdirSync(config.serverConfigDir, { recursive: true });
+        fs.writeFileSync(path.join(config.serverConfigDir, "api_url"), String(apiUrl).trim(), "utf-8");
+      } catch (err: any) {
+        return res.status(500).json({ message: "Erro ao salvar URL da API", detail: err.message });
+      }
+    }
+
+    return res.json({ ok: true, serverIp: readExternIp(), apiUrl: readApiUrl() });
   });
 
   return router;

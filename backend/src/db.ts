@@ -134,6 +134,11 @@ export const CallLog = sequelize.define("CallLog", {
     allowNull: false,
     defaultValue: "nao_atendida",
   },
+  callUniqueId: { type: DataTypes.STRING, allowNull: true },
+  duration: { type: DataTypes.INTEGER, allowNull: true },
+  direction: { type: DataTypes.STRING, allowNull: true },
+  src: { type: DataTypes.STRING, allowNull: true },
+  dst: { type: DataTypes.STRING, allowNull: true },
 });
 
 export const CallRecording = sequelize.define("CallRecording", {
@@ -471,6 +476,16 @@ export const syncDatabase = async () => {
         END IF;
       END $$;
     `,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      `ALTER TABLE "CallLogs"
+        ADD COLUMN IF NOT EXISTS "callUniqueId" VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS "duration" INTEGER,
+        ADD COLUMN IF NOT EXISTS "direction" VARCHAR(32),
+        ADD COLUMN IF NOT EXISTS "src" VARCHAR(255),
+        ADD COLUMN IF NOT EXISTS "dst" VARCHAR(255)`,
     )
     .catch(() => {});
   await sequelize

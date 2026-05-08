@@ -7,18 +7,35 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogFooter, DialogDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 
 import {
-  Plus, Pencil, Trash2, RefreshCw, Phone,
-  CheckCircle2, AlertCircle, Loader2, ChevronDown, ChevronUp,
+  Plus,
+  Pencil,
+  Trash2,
+  RefreshCw,
+  Phone,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 const CODEC_OPTIONS = ["ulaw", "alaw", "g729", "g722", "gsm", "opus"];
@@ -40,10 +57,20 @@ const emptyForm = {
   insecure: "invite,port",
 };
 
-function FieldRow({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function FieldRow({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-muted-foreground">{label}</label>
+      <label className="text-xs font-medium text-muted-foreground">
+        {label}
+      </label>
       {children}
       {hint && <p className="text-xs text-muted-foreground/70">{hint}</p>}
     </div>
@@ -59,7 +86,15 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   );
 }
 
-function NativeSelect({ value, onChange, children }: { value: string; onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void; children: React.ReactNode }) {
+function NativeSelect({
+  value,
+  onChange,
+  children,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  children: React.ReactNode;
+}) {
   return (
     <select
       value={value}
@@ -71,7 +106,13 @@ function NativeSelect({ value, onChange, children }: { value: string; onChange: 
   );
 }
 
-function CodecCheckboxes({ selected, onChange }: { selected: string[]; onChange: (v: string[]) => void }) {
+function CodecCheckboxes({
+  selected,
+  onChange,
+}: {
+  selected: string[];
+  onChange: (v: string[]) => void;
+}) {
   const toggle = (codec: string) => {
     if (selected.includes(codec)) {
       if (selected.length === 1) return; // mínimo 1
@@ -83,7 +124,10 @@ function CodecCheckboxes({ selected, onChange }: { selected: string[]; onChange:
   return (
     <div className="flex flex-wrap gap-2">
       {CODEC_OPTIONS.map((codec) => (
-        <label key={codec} className="flex items-center gap-1.5 cursor-pointer select-none text-sm">
+        <label
+          key={codec}
+          className="flex items-center gap-1.5 cursor-pointer select-none text-sm"
+        >
           <input
             type="checkbox"
             checked={selected.includes(codec)}
@@ -99,7 +143,13 @@ function CodecCheckboxes({ selected, onChange }: { selected: string[]; onChange:
 
 export default function LinhasVoip() {
   const { t } = useTranslation();
-  const { voipLines, createVoipLine, updateVoipLine, deleteVoipLine, reprovisionVoipLine } = usePbx();
+  const {
+    voipLines,
+    createVoipLine,
+    updateVoipLine,
+    deleteVoipLine,
+    reprovisionVoipLine,
+  } = usePbx();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<VoipLine | null>(null);
@@ -107,7 +157,10 @@ export default function LinhasVoip() {
   const [form, setForm] = useState(emptyForm);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: string; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    type: string;
+    message: string;
+  } | null>(null);
   const [reprovisioningId, setReprovisioningId] = useState<string | null>(null);
 
   const set = (field: string, value: unknown) =>
@@ -152,10 +205,14 @@ export default function LinhasVoip() {
       inboundContext: form.inboundContext.trim() || undefined,
       fromdomain: form.fromdomain.trim() || undefined,
       insecure: form.insecure.trim() || undefined,
-      transport: form.transport === "udp" ? "transport-udp"
-        : form.transport === "tcp" ? "transport-tcp"
-        : form.transport === "tls" ? "transport-tls"
-        : form.transport,
+      transport:
+        form.transport === "udp"
+          ? "transport-udp"
+          : form.transport === "tcp"
+            ? "transport-tcp"
+            : form.transport === "tls"
+              ? "transport-tls"
+              : form.transport,
     };
     try {
       if (editingLine) {
@@ -167,7 +224,10 @@ export default function LinhasVoip() {
       }
       setDialogOpen(false);
     } catch (err: any) {
-      setFeedback({ type: "error", message: err?.response?.data?.error || "Erro ao salvar linha." });
+      setFeedback({
+        type: "error",
+        message: err?.response?.data?.error || "Erro ao salvar linha.",
+      });
     } finally {
       setLoading(false);
     }
@@ -211,7 +271,11 @@ export default function LinhasVoip() {
 
       {feedback && (
         <Alert variant={feedback.type === "error" ? "destructive" : "default"}>
-          {feedback.type === "success" ? <CheckCircle2 className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+          {feedback.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <AlertCircle className="h-4 w-4" />
+          )}
           <AlertDescription>{feedback.message}</AlertDescription>
         </Alert>
       )}
@@ -240,7 +304,10 @@ export default function LinhasVoip() {
             <TableBody>
               {voipLines.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  <TableCell
+                    colSpan={8}
+                    className="text-center text-muted-foreground py-8"
+                  >
                     Nenhuma linha VoIP cadastrada.
                   </TableCell>
                 </TableRow>
@@ -249,7 +316,10 @@ export default function LinhasVoip() {
                   <TableRow key={line.id}>
                     <TableCell className="font-medium">{line.name}</TableCell>
                     <TableCell>
-                      <span className="text-muted-foreground">{line.username}@</span>{line.host}
+                      <span className="text-muted-foreground">
+                        {line.username}@
+                      </span>
+                      {line.host}
                     </TableCell>
                     <TableCell>
                       <Badge variant="outline">{line.type || "peer"}</Badge>
@@ -261,22 +331,50 @@ export default function LinhasVoip() {
                       {line.codecs || "ulaw,alaw"}
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary">{line.context || "default"}</Badge>
+                      <Badge variant="secondary">
+                        {line.context || "default"}
+                      </Badge>
                     </TableCell>
                     <TableCell>
-                      {line.inboundContext
-                        ? <Badge variant="secondary" className="border-violet-500/40 text-violet-400">{line.inboundContext}</Badge>
-                        : <span className="text-muted-foreground text-xs">—</span>}
+                      {line.inboundContext ? (
+                        <Badge
+                          variant="secondary"
+                          className="border-violet-500/40 text-violet-400"
+                        >
+                          {line.inboundContext}
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
-                        <Button size="sm" variant="outline" onClick={() => handleReprovision(line.id)} disabled={reprovisioningId === line.id} title="Reprovisionamento">
-                          {reprovisioningId === line.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReprovision(line.id)}
+                          disabled={reprovisioningId === line.id}
+                          title="Reprovisionamento"
+                        >
+                          {reprovisioningId === line.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="h-3.5 w-3.5" />
+                          )}
                         </Button>
-                        <Button size="sm" variant="outline" onClick={() => openEdit(line)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => openEdit(line)}
+                        >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
-                        <Button size="sm" variant="outline" className="text-destructive hover:bg-destructive/10" onClick={() => setDeleteDialog(line)}>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-destructive hover:bg-destructive/10"
+                          onClick={() => setDeleteDialog(line)}
+                        >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
@@ -293,36 +391,80 @@ export default function LinhasVoip() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingLine ? "Editar linha VoIP" : "Nova linha VoIP"}</DialogTitle>
+            <DialogTitle>
+              {editingLine ? "Editar linha VoIP" : "Nova linha VoIP"}
+            </DialogTitle>
             <DialogDescription>
-              Configure o tronco SIP. O <strong>Contexto de saída</strong> é usado pelos ramais para discar. O <strong>Contexto de entrada</strong> é o destino das chamadas recebidas (ex: URA receptiva).
+              Configure o tronco SIP. O <strong>Contexto de saída</strong> é
+              usado pelos ramais para discar. O{" "}
+              <strong>Contexto de entrada</strong> é o destino das chamadas
+              recebidas (ex: URA receptiva).
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Identificação */}
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Nome *" hint="Identificador único (ex: efix, voztel)">
-                <Input value={form.name} onChange={(e) => set("name", e.target.value)}
-                  placeholder="efix" required disabled={!!editingLine} />
+              <FieldRow
+                label="Nome *"
+                hint="Identificador único (ex: efix, voztel)"
+              >
+                <Input
+                  value={form.name}
+                  onChange={(e) => set("name", e.target.value)}
+                  placeholder="efix"
+                  required
+                  disabled={!!editingLine}
+                />
               </FieldRow>
               <FieldRow label="Usuário / Número *">
-                <Input value={form.username} onChange={(e) => set("username", e.target.value)}
-                  placeholder="431425388" required />
+                <Input
+                  value={form.username}
+                  onChange={(e) => set("username", e.target.value)}
+                  placeholder="4431425388"
+                  required
+                />
               </FieldRow>
-              <FieldRow label={editingLine ? "Nova senha (deixe em branco para manter)" : "Senha *"}>
-                <Input type="password" value={form.secret} onChange={(e) => set("secret", e.target.value)}
-                  placeholder="••••••••" required={!editingLine} />
+              <FieldRow
+                label={
+                  editingLine
+                    ? "Nova senha (deixe em branco para manter)"
+                    : "Senha *"
+                }
+              >
+                <Input
+                  type="password"
+                  value={form.secret}
+                  onChange={(e) => set("secret", e.target.value)}
+                  placeholder="••••••••"
+                  required={!editingLine}
+                />
               </FieldRow>
               <FieldRow label="Host *">
-                <Input value={form.host} onChange={(e) => set("host", e.target.value)}
-                  placeholder="sip.provedor.com.br" required />
+                <Input
+                  value={form.host}
+                  onChange={(e) => set("host", e.target.value)}
+                  placeholder="sip.provedor.com.br"
+                  required
+                />
               </FieldRow>
               <FieldRow label="Porta">
-                <Input type="number" value={form.port} onChange={(e) => set("port", Number(e.target.value))} min={1} max={65535} />
+                <Input
+                  type="number"
+                  value={form.port}
+                  onChange={(e) => set("port", Number(e.target.value))}
+                  min={1}
+                  max={65535}
+                />
               </FieldRow>
-              <FieldRow label="Tipo do tronco" hint="peer = sem registro | friend = bidirecional | user = registra">
-                <NativeSelect value={form.type} onChange={(e) => set("type", e.target.value)}>
+              <FieldRow
+                label="Tipo do tronco"
+                hint="peer = sem registro | friend = bidirecional | user = registra"
+              >
+                <NativeSelect
+                  value={form.type}
+                  onChange={(e) => set("type", e.target.value)}
+                >
                   <option value="peer">peer (tronco sem registro)</option>
                   <option value="friend">friend (bidirecional)</option>
                   <option value="user">user (registra no provedor)</option>
@@ -332,21 +474,41 @@ export default function LinhasVoip() {
 
             {/* Roteamento */}
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Roteamento</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Roteamento
+            </p>
             <div className="grid grid-cols-2 gap-3">
-              <FieldRow label="Contexto de saída" hint="Contexto que os ramais usam para discar por esta linha">
-                <Input value={form.context} onChange={(e) => set("context", e.target.value)} placeholder="default" />
+              <FieldRow
+                label="Contexto de saída"
+                hint="Contexto que os ramais usam para discar por esta linha"
+              >
+                <Input
+                  value={form.context}
+                  onChange={(e) => set("context", e.target.value)}
+                  placeholder="default"
+                />
               </FieldRow>
-              <FieldRow label="Contexto de entrada (inbound)" hint="Para onde vão as chamadas recebidas (URA receptiva, direto para ramal, etc.)">
-                <Input value={form.inboundContext} onChange={(e) => set("inboundContext", e.target.value)}
-                  placeholder="ura-receptiva (deixe vazio se não recebe)" />
+              <FieldRow
+                label="Contexto de entrada (inbound)"
+                hint="Para onde vão as chamadas recebidas (URA receptiva, direto para ramal, etc.)"
+              >
+                <Input
+                  value={form.inboundContext}
+                  onChange={(e) => set("inboundContext", e.target.value)}
+                  placeholder="ura-receptiva (deixe vazio se não recebe)"
+                />
               </FieldRow>
             </div>
 
             {/* Codecs */}
             <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Codecs de áudio</p>
-            <CodecCheckboxes selected={form.codecs} onChange={(v) => set("codecs", v)} />
+            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Codecs de áudio
+            </p>
+            <CodecCheckboxes
+              selected={form.codecs}
+              onChange={(v) => set("codecs", v)}
+            />
 
             {/* Avançado */}
             <Separator />
@@ -355,43 +517,76 @@ export default function LinhasVoip() {
               onClick={() => setShowAdvanced((v) => !v)}
               className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
             >
-              {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              {showAdvanced ? (
+                <ChevronUp className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5" />
+              )}
               Configurações avançadas
             </button>
 
             {showAdvanced && (
               <div className="grid grid-cols-2 gap-3">
                 <FieldRow label="Transporte">
-                  <NativeSelect value={form.transport} onChange={(e) => set("transport", e.target.value)}>
+                  <NativeSelect
+                    value={form.transport}
+                    onChange={(e) => set("transport", e.target.value)}
+                  >
                     <option value="udp">UDP</option>
                     <option value="tcp">TCP</option>
                     <option value="tls">TLS</option>
                   </NativeSelect>
                 </FieldRow>
                 <FieldRow label="Modo DTMF">
-                  <NativeSelect value={form.dtmfmode} onChange={(e) => set("dtmfmode", e.target.value)}>
+                  <NativeSelect
+                    value={form.dtmfmode}
+                    onChange={(e) => set("dtmfmode", e.target.value)}
+                  >
                     <option value="rfc2833">RFC 2833 (padrão)</option>
                     <option value="inband">Inband</option>
                     <option value="info">SIP INFO</option>
                     <option value="auto">Auto</option>
                   </NativeSelect>
                 </FieldRow>
-                <FieldRow label="From Domain" hint="Para provedores que exigem (ex: sip1.voztel.com.br)">
-                  <Input value={form.fromdomain} onChange={(e) => set("fromdomain", e.target.value)}
-                    placeholder="sip.provedor.com.br" />
+                <FieldRow
+                  label="From Domain"
+                  hint="Para provedores que exigem (ex: sip1.voztel.com.br)"
+                >
+                  <Input
+                    value={form.fromdomain}
+                    onChange={(e) => set("fromdomain", e.target.value)}
+                    placeholder="sip.provedor.com.br"
+                  />
                 </FieldRow>
-                <FieldRow label="Insecure" hint="invite,port = aceita qualquer origem (troncos sem registro)">
-                  <Input value={form.insecure} onChange={(e) => set("insecure", e.target.value)}
-                    placeholder="invite,port" />
+                <FieldRow
+                  label="Insecure"
+                  hint="invite,port = aceita qualquer origem (troncos sem registro)"
+                >
+                  <Input
+                    value={form.insecure}
+                    onChange={(e) => set("insecure", e.target.value)}
+                    placeholder="invite,port"
+                  />
                 </FieldRow>
                 <FieldRow label="Limite de chamadas" hint="0 = sem limite">
-                  <Input type="number" value={form.callLimit} onChange={(e) => set("callLimit", Number(e.target.value))} min={0} />
+                  <Input
+                    type="number"
+                    value={form.callLimit}
+                    onChange={(e) => set("callLimit", Number(e.target.value))}
+                    min={0}
+                  />
                 </FieldRow>
               </div>
             )}
 
             <DialogFooter className="pt-2">
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                Cancelar
+              </Button>
               <Button type="submit" disabled={loading}>
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {editingLine ? "Salvar alterações" : "Cadastrar linha"}
@@ -407,12 +602,20 @@ export default function LinhasVoip() {
           <DialogHeader>
             <DialogTitle>Remover linha VoIP</DialogTitle>
             <DialogDescription>
-              Tem certeza que deseja remover a linha <strong>{deleteDialog?.name}</strong>? Esta ação não pode ser desfeita.
+              Tem certeza que deseja remover a linha{" "}
+              <strong>{deleteDialog?.name}</strong>? Esta ação não pode ser
+              desfeita.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialog(null)}>Cancelar</Button>
-            <Button variant="destructive" onClick={handleDelete} disabled={loading}>
+            <Button variant="outline" onClick={() => setDeleteDialog(null)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDelete}
+              disabled={loading}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Remover
             </Button>

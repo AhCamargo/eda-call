@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from "axios";
 
 const api: AxiosInstance = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
+  baseURL: (window as any).EDACALL_API_URL || import.meta.env.VITE_API_URL || "http://localhost:5000",
 });
 
 export const setToken = (token: string | null): void => {

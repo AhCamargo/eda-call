@@ -1,6 +1,6 @@
 import { Server } from "socket.io";
 import { getAmiClient, runCommand } from "../ami";
-import { Extension } from "../db";
+import { Extension, CallLog, VoipLine } from "../db";
 
 let started = false;
 let extensionsCache: any[] = [];
@@ -290,6 +290,79 @@ const updateStatusForChannels = async (channels: string[], nextStatus: string, i
   io.emit("dashboard:update");
 };
 
+const dispositionToResult = (disposition: string): "atendida" | "nao_atendida" | "numero_nao_existe" | "rejeitada" => {
+  switch (disposition.toUpperCase()) {
+    case "ANSWERED": return "atendida";
+    case "BUSY": return "rejeitada";
+    case "FAILED": return "numero_nao_existe";
+    default: return "nao_atendida";
+  }
+};
+
+const handleCdrEvent = async (event: any) => {
+  const uniqueId = String(event.UniqueID || event.Uniqueid || "");
+  if (!uniqueId) return;
+
+  // Evitar duplicatas
+  const existing = await (CallLog as any).findOne({ where: { callUniqueId: uniqueId } });
+  if (existing) return;
+
+  const src = String(event.Source || event.CallerID || "");
+  const dst = String(event.Destination || "");
+  const disposition = String(event.Disposition || "NO ANSWER");
+  const billsec = parseInt(String(event.Billsec || "0"), 10);
+  const duration = parseInt(String(event.Duration || "0"), 10);
+
+  // Identifica ramal pelo canal de origem (SIP/1400-xxx → "1400")
+  const srcChannel = String(event.Channel || "");
+  const dstChannel = String(event.DestinationChannel || event.DestChannel || "");
+
+  const extractExtNumber = (ch: string) => {
+    const m = ch.match(/^SIP\/([^-/]+)/i);
+    return m ? m[1] : null;
+  };
+
+  const srcExtNum = extractExtNumber(srcChannel);
+  const dstExtNum = extractExtNumber(dstChannel);
+
+  let extensionId: number | null = null;
+  let voipLineId: number | null = null;
+
+  if (srcExtNum) {
+    const ext = await (Extension as any).findOne({ where: { number: srcExtNum } }) as any;
+    if (ext) extensionId = ext.id;
+    else {
+      // pode ser um tronco
+      const line = await (VoipLine as any).findOne({ where: { name: srcExtNum } }) as any;
+      if (line) voipLineId = line.id;
+    }
+  }
+
+  if (!extensionId && dstExtNum) {
+    const ext = await (Extension as any).findOne({ where: { number: dstExtNum } }) as any;
+    if (ext) extensionId = ext.id;
+  }
+
+  // Determina direção: inbound se o src é um tronco (não é ramal)
+  let direction = "internal";
+  if (srcExtNum && !extensionId) direction = "inbound";
+  else if (dst && dst.length > 5 && extensionId) direction = "outbound";
+
+  const phoneNumber = direction === "inbound" ? src : dst || src;
+
+  await (CallLog as any).create({
+    phoneNumber: phoneNumber || "unknown",
+    result: dispositionToResult(disposition),
+    callUniqueId: uniqueId,
+    duration: billsec || duration,
+    direction,
+    src,
+    dst,
+    extensionId,
+    voipLineId,
+  });
+};
+
 export const startAmiStatusMonitor = (io: Server) => {
   if (started) {
     return;
@@ -301,6 +374,12 @@ export const startAmiStatusMonitor = (io: Server) => {
   client.on("managerevent", async (event: any) => {
     try {
       const eventName = String(event.Event || "").toLowerCase();
+
+      if (eventName === "cdr") {
+        await handleCdrEvent(event);
+        return;
+      }
+
       const channels = getEventChannels(event);
 
       if (!channels.length) {

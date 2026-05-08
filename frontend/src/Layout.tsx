@@ -24,6 +24,7 @@ import {
   ListFilter,
   FolderOpen,
   ShieldAlert,
+  Settings2,
 } from "lucide-react";
 
 const EXPANDED: number = 240;
@@ -228,6 +229,12 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         label: "Segurança SIP",
         icon: ShieldAlert,
         iconColor: "#ef4444",
+      });
+      items.push({
+        to: "/configuracoes",
+        label: "Configurações",
+        icon: Settings2,
+        iconColor: "#a78bfa",
       });
     }
     return items;
