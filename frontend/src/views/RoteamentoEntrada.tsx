@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import api from "../api";
-import type { InboundRoute, CreateInboundRoutePayload } from "../types";
+import type { InboundRoute, CreateInboundRoutePayload, InboundDestinationType } from "../types";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { PhoneIncoming, Plus, Pencil, Trash2, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 
+const DEST_TYPES: { value: InboundDestinationType; labelKey: string }[] = [
+  { value: "extension", labelKey: "inboundRoutes.extension" },
+  { value: "ivr",       labelKey: "inboundRoutes.ivr" },
+  { value: "queue",     labelKey: "inboundRoutes.queue" },
+];
+
 const emptyForm: CreateInboundRoutePayload = {
   did: "",
   description: "",
@@ -34,21 +40,22 @@ const emptyForm: CreateInboundRoutePayload = {
   enabled: true,
 };
 
-interface Feedback {
-  msg: string;
-  type: "ok" | "error";
-}
+interface Feedback { msg: string; type: "ok" | "error" }
+interface IvrOption  { id: number; name: string; contextName: string }
+interface QueueOption { id: number; name: string }
 
 export default function RoteamentoEntrada() {
   const { t } = useTranslation();
-  const [routes, setRoutes] = useState<InboundRoute[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [routes, setRoutes]         = useState<InboundRoute[]>([]);
+  const [ivrs, setIvrs]             = useState<IvrOption[]>([]);
+  const [queues, setQueues]         = useState<QueueOption[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [feedback, setFeedback]     = useState<Feedback | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteDialog, setDeleteDialog] = useState<InboundRoute | null>(null);
   const [editingRoute, setEditingRoute] = useState<InboundRoute | null>(null);
-  const [form, setForm] = useState<CreateInboundRoutePayload>(emptyForm);
-  const [saving, setSaving] = useState(false);
+  const [form, setForm]             = useState<CreateInboundRoutePayload>(emptyForm);
+  const [saving, setSaving]         = useState(false);
 
   const set = <K extends keyof CreateInboundRoutePayload>(
     key: K,
@@ -67,8 +74,22 @@ export default function RoteamentoEntrada() {
     }
   };
 
+  const loadOptions = async () => {
+    try {
+      const [ivrRes, queueRes] = await Promise.all([
+        api.get("/inbound-ivr"),
+        api.get("/queues"),
+      ]);
+      setIvrs(ivrRes.data);
+      setQueues(queueRes.data);
+    } catch {
+      // silencia — campos ficam como input livre
+    }
+  };
+
   useEffect(() => {
     load();
+    loadOptions();
   }, []);
 
   const openCreate = () => {
@@ -88,6 +109,10 @@ export default function RoteamentoEntrada() {
       enabled: route.enabled,
     });
     setDialogOpen(true);
+  };
+
+  const handleTypeChange = (type: InboundDestinationType) => {
+    setForm((prev) => ({ ...prev, destinationType: type, destinationTarget: "" }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,6 +156,25 @@ export default function RoteamentoEntrada() {
       setFeedback({ msg: "Erro ao reprovisionar.", type: "error" });
     }
   };
+
+  const destTypeLabel = (type: InboundDestinationType) => t(`inboundRoutes.${type}`);
+
+  const destTargetLabel = (route: InboundRoute) => {
+    if (route.destinationType === "ivr") {
+      const ivr = ivrs.find((i) => i.contextName === route.destinationTarget);
+      return ivr?.name ?? route.destinationTarget;
+    }
+    if (route.destinationType === "queue") {
+      const q = queues.find((q) => q.name === route.destinationTarget);
+      return q?.name ?? route.destinationTarget;
+    }
+    return route.destinationTarget;
+  };
+
+  const selectClass =
+    "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
+  const inputClass =
+    "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring";
 
   return (
     <div className="p-4 space-y-4">
@@ -179,6 +223,7 @@ export default function RoteamentoEntrada() {
                 <TableRow>
                   <TableHead>{t("inboundRoutes.did")}</TableHead>
                   <TableHead>{t("inboundRoutes.description")}</TableHead>
+                  <TableHead>{t("inboundRoutes.destinationType")}</TableHead>
                   <TableHead>{t("inboundRoutes.destinationTarget")}</TableHead>
                   <TableHead>{t("inboundRoutes.enabled")}</TableHead>
                   <TableHead className="text-right">Ações</TableHead>
@@ -190,9 +235,9 @@ export default function RoteamentoEntrada() {
                     <TableCell className="font-mono">{route.did}</TableCell>
                     <TableCell className="text-muted-foreground">{route.description || "—"}</TableCell>
                     <TableCell>
-                      <span className="font-medium">{route.destinationTarget}</span>
-                      <span className="ml-1 text-xs text-muted-foreground">({t("inboundRoutes.extension")})</span>
+                      <Badge variant="outline">{destTypeLabel(route.destinationType)}</Badge>
                     </TableCell>
+                    <TableCell className="font-medium">{destTargetLabel(route)}</TableCell>
                     <TableCell>
                       <Badge variant={route.enabled ? "default" : "secondary"}>
                         {route.enabled ? "Ativo" : "Inativo"}
@@ -225,6 +270,7 @@ export default function RoteamentoEntrada() {
             </DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-3">
+            {/* DID */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">{t("inboundRoutes.did")} *</label>
               <input
@@ -234,29 +280,75 @@ export default function RoteamentoEntrada() {
                 required
                 pattern="\d{8,15}"
                 title="Somente dígitos, 8 a 15 caracteres"
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
+                className={`${inputClass} font-mono`}
               />
             </div>
+
+            {/* Descrição */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">{t("inboundRoutes.description")}</label>
               <input
                 value={form.description ?? ""}
                 onChange={(e) => set("description", e.target.value)}
                 placeholder={t("inboundRoutes.descriptionPlaceholder")}
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                className={inputClass}
               />
             </div>
+
+            {/* Tipo de destino */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">{t("inboundRoutes.destinationType")} *</label>
+              <select
+                value={form.destinationType}
+                onChange={(e) => handleTypeChange(e.target.value as InboundDestinationType)}
+                className={selectClass}
+              >
+                {DEST_TYPES.map((dt) => (
+                  <option key={dt.value} value={dt.value}>{t(dt.labelKey)}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Destino — muda conforme o tipo */}
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">{t("inboundRoutes.destinationTarget")} *</label>
-              <input
-                value={form.destinationTarget}
-                onChange={(e) => set("destinationTarget", e.target.value)}
-                placeholder={t("inboundRoutes.destinationTargetPlaceholder")}
-                required
-                className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring font-mono"
-              />
-              <p className="text-xs text-muted-foreground">{t("inboundRoutes.extension")}</p>
+
+              {form.destinationType === "ivr" ? (
+                <select
+                  value={form.destinationTarget}
+                  onChange={(e) => set("destinationTarget", e.target.value)}
+                  required
+                  className={selectClass}
+                >
+                  <option value="">{t("inboundRoutes.selectIvr")}</option>
+                  {ivrs.map((ivr) => (
+                    <option key={ivr.id} value={ivr.contextName}>{ivr.name}</option>
+                  ))}
+                </select>
+              ) : form.destinationType === "queue" ? (
+                <select
+                  value={form.destinationTarget}
+                  onChange={(e) => set("destinationTarget", e.target.value)}
+                  required
+                  className={selectClass}
+                >
+                  <option value="">{t("inboundRoutes.selectQueue")}</option>
+                  {queues.map((q) => (
+                    <option key={q.id} value={q.name}>{q.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={form.destinationTarget}
+                  onChange={(e) => set("destinationTarget", e.target.value)}
+                  placeholder={t("inboundRoutes.destinationTargetPlaceholder")}
+                  required
+                  className={`${inputClass} font-mono`}
+                />
+              )}
             </div>
+
+            {/* Ativo */}
             <label className="flex items-center gap-3 cursor-pointer select-none pt-1">
               <input
                 type="checkbox"
@@ -266,6 +358,7 @@ export default function RoteamentoEntrada() {
               />
               <span className="text-sm font-medium">{t("inboundRoutes.enabled")}</span>
             </label>
+
             <DialogFooter className="pt-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
                 {t("common.cancel")}

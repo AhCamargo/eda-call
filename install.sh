@@ -171,11 +171,13 @@ cat > /etc/asterisk/sip_nat_runtime.conf << SIPEOF
 ; Gerado pelo instalador EDACall — não editar manualmente
 [general]
 externip=${SERVER_IP}
-; Apenas loopback e rede interna Docker ficam em localnet.
-; Clientes LAN (192.168.x, 10.x) são tratados como externos para que
-; o Asterisk use externip no SDP — áudio funciona corretamente.
+; Redes locais: Asterisk usa o IP real da interface para clientes nestas faixas.
+; Sem esta configuração, Asterisk usa externip para clientes LAN, e se o IP
+; detectado no install mudar (DHCP), o RTP vai para o endereço errado e não sai voz.
 localnet=127.0.0.0/8
 localnet=172.16.0.0/12
+localnet=192.168.0.0/16
+localnet=10.0.0.0/8
 rtpstart=10000
 rtpend=10200
 directmedia=no
@@ -194,6 +196,9 @@ cat > /etc/asterisk/rtp_runtime.conf << 'RTPEOF'
 [general]
 rtpstart=10000
 rtpend=10200
+; Desabilita strict RTP: sem isso, dois softphones locais entram em deadlock
+; (cada um aguarda o primeiro pacote do outro para iniciar o envio).
+strictrtp=no
 RTPEOF
 if [[ -f /etc/asterisk/rtp.conf ]]; then
   grep -q "rtp_runtime.conf" /etc/asterisk/rtp.conf || \

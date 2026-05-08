@@ -601,18 +601,27 @@ const ensureInboundRoutesHeader = async () => {
   }
 };
 
+const buildInboundDidDialLine = (destinationType: string, destinationTarget: string) => {
+  if (destinationType === "ivr") return `Goto(${destinationTarget},s,1)`;
+  if (destinationType === "queue") return `Queue(${destinationTarget},t,,,,60)`;
+  return `Dial(SIP/${destinationTarget},30)`;
+};
+
 export const upsertInboundDidRoute = async ({
   did,
+  destinationType = "extension",
   destinationTarget,
 }: {
   did: string;
+  destinationType?: string;
   destinationTarget: string;
 }) => {
   await ensureInboundRoutesHeader();
+  const dialLine = buildInboundDidDialLine(destinationType, destinationTarget);
   await upsertNamedBlock({
     filePath: asteriskInboundRoutesFile,
     sectionName: did,
-    blockContent: `exten => ${did},1,NoOp(InboundRoute: DID ${did} -> ${destinationTarget})\n same => n,Dial(SIP/${destinationTarget},30)\n same => n,Hangup()`,
+    blockContent: `exten => ${did},1,NoOp(InboundRoute: DID ${did} -> ${destinationType}:${destinationTarget})\n same => n,${dialLine}\n same => n,Hangup()`,
     scope: "inbound-did-route",
   });
   try {
@@ -632,15 +641,16 @@ export const removeInboundDidRoute = async ({ did }: { did: string }) => {
 };
 
 export const reprovisionAllInboundDidRoutes = async (
-  routes: Array<{ did: string; destinationTarget: string; enabled: boolean }>,
+  routes: Array<{ did: string; destinationType?: string; destinationTarget: string; enabled: boolean }>,
 ) => {
   await ensureInboundRoutesHeader();
   for (const route of routes) {
     if (route.enabled) {
+      const dialLine = buildInboundDidDialLine(route.destinationType ?? "extension", route.destinationTarget);
       await upsertNamedBlock({
         filePath: asteriskInboundRoutesFile,
         sectionName: route.did,
-        blockContent: `exten => ${route.did},1,NoOp(InboundRoute: DID ${route.did} -> ${route.destinationTarget})\n same => n,Dial(SIP/${route.destinationTarget},30)\n same => n,Hangup()`,
+        blockContent: `exten => ${route.did},1,NoOp(InboundRoute: DID ${route.did} -> ${route.destinationType ?? "extension"}:${route.destinationTarget})\n same => n,${dialLine}\n same => n,Hangup()`,
         scope: "inbound-did-route",
       });
     } else {

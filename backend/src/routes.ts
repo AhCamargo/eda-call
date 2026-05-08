@@ -1823,6 +1823,48 @@ export const createRoutes = (io: Server) => {
     return res.status(201).json(recording);
   });
 
+  router.get("/recordings/:filename", verifyToken, async (req: Request, res: Response) => {
+    const filename = req.params.filename as string;
+    if (!/^[a-zA-Z0-9._-]+\.(wav|mp3)$/i.test(filename)) {
+      return res.status(400).json({ message: "Nome de arquivo inválido" });
+    }
+    const baseDir = path.resolve(asteriskRecordingsDir);
+    const safePath = path.resolve(path.join(baseDir, filename));
+    if (!safePath.startsWith(baseDir)) {
+      return res.status(403).json({ message: "Acesso negado" });
+    }
+    if (!fs.existsSync(safePath)) {
+      return res.status(404).json({ message: "Arquivo não encontrado" });
+    }
+
+    const stat = fs.statSync(safePath);
+    const total = stat.size;
+    const ext = path.extname(filename).toLowerCase();
+    const mimeType = ext === ".mp3" ? "audio/mpeg" : "audio/wav";
+
+    const rangeHeader = req.headers.range;
+    if (rangeHeader) {
+      const [startStr, endStr] = rangeHeader.replace(/bytes=/, "").split("-");
+      const start = parseInt(startStr, 10);
+      const end = endStr ? parseInt(endStr, 10) : total - 1;
+      const chunkSize = end - start + 1;
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${total}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunkSize,
+        "Content-Type": mimeType,
+      });
+      fs.createReadStream(safePath, { start, end }).pipe(res);
+    } else {
+      res.writeHead(200, {
+        "Content-Length": total,
+        "Content-Type": mimeType,
+        "Accept-Ranges": "bytes",
+      });
+      fs.createReadStream(safePath).pipe(res);
+    }
+  });
+
   router.delete("/recordings/:id", async (req: Request, res: Response) => {
     const recording = (await CallRecording.findByPk(
       req.params.id as string,
@@ -2528,7 +2570,7 @@ export const createRoutes = (io: Server) => {
         enabled: Boolean(enabled),
       });
       if (Boolean(enabled)) {
-        await upsertInboundDidRoute({ did: String(did).trim(), destinationTarget: String(destinationTarget).trim() });
+        await upsertInboundDidRoute({ did: String(did).trim(), destinationType: String(destinationType), destinationTarget: String(destinationTarget).trim() });
       }
       return res.status(201).json(route);
     } catch (err: any) {
@@ -2571,7 +2613,8 @@ export const createRoutes = (io: Server) => {
         await removeInboundDidRoute({ did: oldDid });
       }
       if (newEnabled) {
-        await upsertInboundDidRoute({ did: newDid, destinationTarget: newTarget });
+        const newType = req.body?.destinationType !== undefined ? String(req.body.destinationType) : String((route as any).destinationType);
+        await upsertInboundDidRoute({ did: newDid, destinationType: newType, destinationTarget: newTarget });
       } else {
         await removeInboundDidRoute({ did: newDid });
       }
@@ -2596,7 +2639,7 @@ export const createRoutes = (io: Server) => {
   router.post("/inbound-routes/reprovision-all", verifyToken, async (_req: Request, res: Response) => {
     const routes = await InboundRoute.findAll();
     await reprovisionAllInboundDidRoutes(
-      routes.map((r: any) => ({ did: r.did, destinationTarget: r.destinationTarget, enabled: r.enabled })),
+      routes.map((r: any) => ({ did: r.did, destinationType: r.destinationType, destinationTarget: r.destinationTarget, enabled: r.enabled })),
     );
     return res.json({ total: routes.length });
   });

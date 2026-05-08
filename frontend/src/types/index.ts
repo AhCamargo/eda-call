@@ -225,11 +225,13 @@ export interface IPbxContextValue {
 }
 
 // Inbound Route
+export type InboundDestinationType = "extension" | "ivr" | "queue";
+
 export interface InboundRoute {
   id: string;
   did: string;
   description?: string | null;
-  destinationType: "extension";
+  destinationType: InboundDestinationType;
   destinationTarget: string;
   priority: number;
   enabled: boolean;
@@ -240,7 +242,7 @@ export interface InboundRoute {
 export interface CreateInboundRoutePayload {
   did: string;
   description?: string;
-  destinationType: "extension";
+  destinationType: InboundDestinationType;
   destinationTarget: string;
   priority?: number;
   enabled?: boolean;
