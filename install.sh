@@ -67,13 +67,6 @@ VITE_API_URL="${VITE_API_URL%/}"
 ok "URL da API: ${VITE_API_URL}"
 echo ""
 
-# Tronco SIP (opcional)
-echo -e "Registro SIP do tronco (operadora). Formato: ${BOLD}usuario:senha@sip.operadora.com.br${RESET}"
-echo -e "  Pode incluir porta: usuario:senha@host:5060"
-echo -e "  Deixe em branco para configurar depois pelo painel."
-read -rp "Registro SIP: " EFIX_REGISTER
-echo ""
-
 # ── Geração de segredos ───────────────────────────────────────────────────────
 header "Gerando senhas seguras"
 
@@ -185,15 +178,6 @@ allowguest=no
 alwaysauthreject=yes
 SIPEOF
 
-if [[ -n "${EFIX_REGISTER}" ]]; then
-  REGISTER_AFTER_AT="${EFIX_REGISTER##*@}"
-  if [[ "${REGISTER_AFTER_AT}" == *:* ]]; then
-    REGISTER_LINE="${EFIX_REGISTER}"
-  else
-    REGISTER_LINE="${EFIX_REGISTER}:5060"
-  fi
-  printf "\nregister => %s\n" "${REGISTER_LINE}" >> /etc/asterisk/sip_nat_runtime.conf
-fi
 ok "NAT/SIP configurado (IP: ${SERVER_IP})"
 
 # rtp.conf — range de portas para áudio
