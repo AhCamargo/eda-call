@@ -22,7 +22,7 @@ header() {
   echo ""
 }
 
-gen_secret() { tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "${1:-32}"; }
+gen_secret() { tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "${1:-32}" || true; }
 
 # ── Pré-requisitos ────────────────────────────────────────────────────────────
 [[ $EUID -ne 0 ]] && die "Execute como root: sudo bash install.sh"
