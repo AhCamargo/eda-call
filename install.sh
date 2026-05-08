@@ -152,6 +152,7 @@ for f in extensions_custom.conf queues_custom.conf http.conf pjsip_custom.conf; 
 done
 touch "${ASTERISK_CUSTOM_DIR}/sip_custom.conf"
 touch "${ASTERISK_CUSTOM_DIR}/sip_registrations.conf"
+touch "${ASTERISK_CUSTOM_DIR}/extensions_inbound.conf"
 
 # manager.conf — sempre sobrescreve para refletir a senha gerada
 cp asterisk/config/manager.conf /etc/asterisk/manager.conf
@@ -173,7 +174,7 @@ externip=${SERVER_IP}
 localnet=127.0.0.0/8
 localnet=172.16.0.0/12
 rtpstart=10000
-rtpend=10099
+rtpend=10200
 directmedia=no
 bindaddr=0.0.0.0
 nat=force_rport
@@ -187,7 +188,7 @@ ok "NAT/SIP configurado (IP: ${SERVER_IP})"
 cat > /etc/asterisk/rtp_runtime.conf << 'RTPEOF'
 [general]
 rtpstart=10000
-rtpend=10099
+rtpend=10200
 RTPEOF
 if [[ -f /etc/asterisk/rtp.conf ]]; then
   grep -q "rtp_runtime.conf" /etc/asterisk/rtp.conf || \
@@ -209,6 +210,13 @@ fi
 if [[ -f /etc/asterisk/extensions.conf ]]; then
   grep -q "extensions_custom.conf" /etc/asterisk/extensions.conf || \
     printf "\n#include /etc/asterisk-custom/extensions_custom.conf\n" >> /etc/asterisk/extensions.conf
+  grep -q "extensions_inbound.conf" /etc/asterisk/extensions.conf || \
+    printf "\n#include /etc/asterisk-custom/extensions_inbound.conf\n" >> /etc/asterisk/extensions.conf
+fi
+# Garante que o include => inbound-did-routes existe no [default] do extensions_custom.conf
+if [[ -f "${ASTERISK_CUSTOM_DIR}/extensions_custom.conf" ]]; then
+  grep -q "include => inbound-did-routes" "${ASTERISK_CUSTOM_DIR}/extensions_custom.conf" || \
+    sed -i '/^include => ura-reversa/a include => inbound-did-routes' "${ASTERISK_CUSTOM_DIR}/extensions_custom.conf"
 fi
 if [[ -f /etc/asterisk/queues.conf ]]; then
   grep -q "queues_custom.conf" /etc/asterisk/queues.conf || \
@@ -264,7 +272,7 @@ if command -v ufw &>/dev/null; then
   ufw allow 80/tcp       comment "EDACall Frontend"
   ufw allow 5000/tcp     comment "EDACall API"
   ufw allow 5060/udp     comment "SIP"
-  ufw allow 10000:10099/udp comment "RTP Audio"
+  ufw allow 10000:10200/udp comment "RTP Audio"
   ufw allow from 172.16.0.0/12 to any port 5038 comment "AMI Docker"
   ufw reload
   ok "Firewall configurado"

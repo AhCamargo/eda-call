@@ -8,6 +8,7 @@ const {
   asteriskQueuesCustomFile,
   asteriskSipRegistrationsFile,
   asteriskSipMainFile,
+  asteriskInboundRoutesFile,
 } = config;
 
 const buildExtensionBlock = (
@@ -381,6 +382,12 @@ interface InboundIvrOptionParam {
   targetExtension?: string | null;
 }
 
+interface ScheduleRule {
+  days: string;
+  open: string;
+  close: string;
+}
+
 const buildInboundIvrDialplan = ({
   contextName,
   name,
@@ -391,6 +398,9 @@ const buildInboundIvrDialplan = ({
   fallbackLabel,
   dialTechnology,
   options,
+  scheduleEnabled,
+  scheduleJson,
+  closedAudioFile,
 }: {
   contextName: string;
   name: string;
@@ -401,6 +411,9 @@ const buildInboundIvrDialplan = ({
   fallbackLabel?: string | null;
   dialTechnology: string;
   options: InboundIvrOptionParam[];
+  scheduleEnabled?: boolean;
+  scheduleJson?: string | null;
+  closedAudioFile?: string | null;
 }) => {
   const audio = audioFile || "silence/1";
   const tech = (dialTechnology || "SIP").toUpperCase();
@@ -426,11 +439,28 @@ const buildInboundIvrDialplan = ({
     ? `exten => transbordo,1,NoOp(${contextName}: ${fbLabel} -> ${fallback})\n same => n,Dial(${tech}/${fallback},30)\n same => n,Hangup()`
     : `exten => transbordo,1,NoOp(${contextName}: sem transbordo configurado)\n same => n,Hangup()`;
 
+  // Bloco de horário de atendimento
+  let scheduleLines = "";
+  let closedBlock = "";
+  if (scheduleEnabled && scheduleJson) {
+    let rules: ScheduleRule[] = [];
+    try { rules = JSON.parse(scheduleJson); } catch {}
+    if (rules.length > 0) {
+      scheduleLines = rules
+        .map((r) => ` same => n,GotoIfTime(${r.open}-${r.close},${r.days},*,*?horario_aberto)`)
+        .join("\n");
+      scheduleLines += "\n same => n,Goto(horario_fechado,1)";
+      scheduleLines += "\n same => n(horario_aberto),NoOp(Dentro do horario)";
+      const closedAudio = closedAudioFile || "silence/1";
+      closedBlock = `\nexten => horario_fechado,1,NoOp(${contextName}: fora do horario de atendimento)\n same => n,Answer()\n same => n,Wait(1)\n same => n,Playback(${closedAudio})\n same => n,Hangup()`;
+    }
+  }
+
   return `
 [${contextName}]
 exten => s,1,NoOp(URA Receptiva: ${name})
  same => n,Answer()
- same => n,Wait(1)
+${scheduleLines ? scheduleLines : " same => n,Wait(1)"}
  same => n,Set(ATTEMPTS=0)
  same => n(menu),Set(ATTEMPTS=\$[\${ATTEMPTS}+1])
  same => n,Background(${audio})
@@ -447,6 +477,7 @@ exten => t,1,NoOp(Timeout waiting for digit)
  same => n,Goto(transbordo,1)
 
 ${fallbackBlock}
+${closedBlock}
 `;
 };
 
@@ -460,6 +491,9 @@ export const upsertInboundIvrDialplan = async (params: {
   fallbackLabel?: string | null;
   dialTechnology: string;
   options: InboundIvrOptionParam[];
+  scheduleEnabled?: boolean;
+  scheduleJson?: string | null;
+  closedAudioFile?: string | null;
 }) => {
   const contextName = String(params.contextName || "").trim();
   if (!contextName) throw new Error("contextName é obrigatório");
@@ -551,6 +585,79 @@ export const removeTrunkInboundRoute = async ({
     scope: "trunk-inbound-route",
   });
 
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+// ─────────────────────────────────────────────────────────
+// Roteamento DID de entrada — extensions_inbound.conf
+// ─────────────────────────────────────────────────────────
+
+const ensureInboundRoutesHeader = async () => {
+  await ensureFile(asteriskInboundRoutesFile);
+  const content = await fs.readFile(asteriskInboundRoutesFile, "utf-8");
+  if (!content.includes("[inbound-did-routes]")) {
+    await fs.writeFile(
+      asteriskInboundRoutesFile,
+      `; extensions_inbound.conf\n; Gerenciado pelo EDACall — não editar manualmente.\n\n[inbound-did-routes]\n\n${content}`,
+      "utf-8",
+    );
+  }
+};
+
+export const upsertInboundDidRoute = async ({
+  did,
+  destinationTarget,
+}: {
+  did: string;
+  destinationTarget: string;
+}) => {
+  await ensureInboundRoutesHeader();
+  await upsertNamedBlock({
+    filePath: asteriskInboundRoutesFile,
+    sectionName: did,
+    blockContent: `exten => ${did},1,NoOp(InboundRoute: DID ${did} -> ${destinationTarget})\n same => n,Dial(SIP/${destinationTarget},30)\n same => n,Hangup()`,
+    scope: "inbound-did-route",
+  });
+  try {
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+export const removeInboundDidRoute = async ({ did }: { did: string }) => {
+  try {
+    await removeNamedBlock({
+      filePath: asteriskInboundRoutesFile,
+      sectionName: did,
+      scope: "inbound-did-route",
+    });
+    await runCommand("dialplan reload");
+  } catch {}
+};
+
+export const reprovisionAllInboundDidRoutes = async (
+  routes: Array<{ did: string; destinationTarget: string; enabled: boolean }>,
+) => {
+  await ensureInboundRoutesHeader();
+  for (const route of routes) {
+    if (route.enabled) {
+      await upsertNamedBlock({
+        filePath: asteriskInboundRoutesFile,
+        sectionName: route.did,
+        blockContent: `exten => ${route.did},1,NoOp(InboundRoute: DID ${route.did} -> ${route.destinationTarget})\n same => n,Dial(SIP/${route.destinationTarget},30)\n same => n,Hangup()`,
+        scope: "inbound-did-route",
+      });
+    } else {
+      try {
+        await removeNamedBlock({
+          filePath: asteriskInboundRoutesFile,
+          sectionName: route.did,
+          scope: "inbound-did-route",
+        });
+      } catch {}
+    }
+  }
   try {
     await runCommand("dialplan reload");
   } catch {}

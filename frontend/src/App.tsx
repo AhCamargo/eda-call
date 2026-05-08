@@ -23,6 +23,7 @@ import Filas from "./views/Filas";
 import GerenciadorAudios from "./views/GerenciadorAudios";
 import Seguranca from "./views/Seguranca";
 import Configuracoes from "./views/Configuracoes";
+import RoteamentoEntrada from "./views/RoteamentoEntrada";
 import { PbxProvider } from "./context/PbxContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -217,6 +218,7 @@ function App(): JSX.Element {
                 <Route path="/configuracoes" element={<Configuracoes />} />
               )}
               <Route path="/linhas-voip" element={<LinhasVoip />} />
+              <Route path="/roteamento-entrada" element={<RoteamentoEntrada />} />
               <Route path="/gravacoes" element={<Gravacoes />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/usuario" element={<Usuario />} />

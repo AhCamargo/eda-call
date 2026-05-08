@@ -28,6 +28,9 @@ import {
   removeTrunkInboundRoute,
   upsertQueue,
   removeQueue,
+  upsertInboundDidRoute,
+  removeInboundDidRoute,
+  reprovisionAllInboundDidRoutes,
 } from "./services/asteriskProvisioning";
 import {
   Extension,
@@ -45,6 +48,7 @@ import {
   InboundIvrOption,
   AsteriskQueue,
   AsteriskQueueMember,
+  InboundRoute,
 } from "./db";
 
 const { asteriskSoundsDir, asteriskRecordingsDir } = config;
@@ -133,6 +137,11 @@ const toRecordingWebPath = (filePath: string) => {
   const relative = path.relative(normalizedBase, normalizedFile);
   return `/recordings/${relative.split(path.sep).join("/")}`;
 };
+
+const asyncHandler =
+  (fn: (req: Request, res: Response, next: express.NextFunction) => Promise<any>) =>
+  (req: Request, res: Response, next: express.NextFunction) =>
+    Promise.resolve(fn(req, res, next)).catch(next);
 
 export const createRoutes = (io: Server) => {
   const router = express.Router();
@@ -876,18 +885,18 @@ export const createRoutes = (io: Server) => {
     res.json({ statusCounts, latestCampaigns: campaigns });
   });
 
-  router.get("/extensions", async (_, res: Response) => {
+  router.get("/extensions", async (req: Request, res: Response) => {
     const extensions = (await Extension.findAll({
       include: [
         { model: VoipLine, attributes: ["id", "name", "host", "port"] },
       ],
       order: [["number", "ASC"]],
     })) as any[];
-    // Retorna também o campo password para administração (remova se não quiser exibir a senha)
+    const isAdmin = (req as any).user?.role === "admin";
     res.json(
       extensions.map((e) => ({
         ...withExtensionSector(e),
-        sipPassword: e.password,
+        ...(isAdmin ? { sipPassword: e.password } : {}),
         voipLineId: e.voipLineId || null,
         VoipLine: e.VoipLine
           ? { id: e.VoipLine.id, name: e.VoipLine.name }
@@ -2341,6 +2350,9 @@ export const createRoutes = (io: Server) => {
       fallbackLabel,
       dialTechnology,
       options,
+      scheduleEnabled,
+      scheduleJson,
+      closedAudioFile,
     } = req.body;
 
     const oldContext = ivr.contextName;
@@ -2354,6 +2366,9 @@ export const createRoutes = (io: Server) => {
     if (fallbackExtension !== undefined) ivr.fallbackExtension = fallbackExtension || null;
     if (fallbackLabel !== undefined) ivr.fallbackLabel = fallbackLabel || "Transbordo";
     if (dialTechnology !== undefined) ivr.dialTechnology = dialTechnology;
+    if (scheduleEnabled !== undefined) ivr.scheduleEnabled = Boolean(scheduleEnabled);
+    if (scheduleJson !== undefined) ivr.scheduleJson = scheduleJson || null;
+    if (closedAudioFile !== undefined) ivr.closedAudioFile = closedAudioFile || null;
     await ivr.save();
 
     let updatedOptions = ivr.options?.map((o: any) => o.toJSON()) ?? [];
@@ -2385,6 +2400,9 @@ export const createRoutes = (io: Server) => {
       fallbackLabel: ivr.fallbackLabel,
       dialTechnology: ivr.dialTechnology,
       options: updatedOptions,
+      scheduleEnabled: ivr.scheduleEnabled,
+      scheduleJson: ivr.scheduleJson,
+      closedAudioFile: ivr.closedAudioFile,
     });
 
     if (ivr.voipLineId) {
@@ -2484,6 +2502,120 @@ export const createRoutes = (io: Server) => {
 
     return res.json({ ok: true, serverIp: readExternIp(), apiUrl: readApiUrl() });
   });
+
+  // ── Roteamento de Entrada (DID → Ramal) ───────────────────────────────────
+
+  router.get("/inbound-routes", verifyToken, async (_req: Request, res: Response) => {
+    const routes = await InboundRoute.findAll({ order: [["priority", "ASC"], ["did", "ASC"]] });
+    return res.json(routes);
+  });
+
+  router.post("/inbound-routes", verifyToken, async (req: Request, res: Response) => {
+    const { did, description, destinationType = "extension", destinationTarget, priority = 0, enabled = true } = req.body || {};
+    if (!did || !/^\d{8,15}$/.test(String(did))) {
+      return res.status(400).json({ message: "DID inválido (somente dígitos, 8-15 caracteres)" });
+    }
+    if (!destinationTarget || !String(destinationTarget).trim()) {
+      return res.status(400).json({ message: "Destino obrigatório" });
+    }
+    try {
+      const route = await InboundRoute.create({
+        did: String(did).trim(),
+        description: description ? String(description).trim() : null,
+        destinationType: String(destinationType),
+        destinationTarget: String(destinationTarget).trim(),
+        priority: Number(priority) || 0,
+        enabled: Boolean(enabled),
+      });
+      if (Boolean(enabled)) {
+        await upsertInboundDidRoute({ did: String(did).trim(), destinationTarget: String(destinationTarget).trim() });
+      }
+      return res.status(201).json(route);
+    } catch (err: any) {
+      if (err.name === "SequelizeUniqueConstraintError") {
+        return res.status(409).json({ message: "DID já cadastrado" });
+      }
+      return res.status(500).json({ message: "Erro ao criar rota", detail: err.message });
+    }
+  });
+
+  router.patch("/inbound-routes/:id", verifyToken, async (req: Request, res: Response) => {
+    const route = await InboundRoute.findByPk(String(req.params.id));
+    if (!route) return res.status(404).json({ message: "Rota não encontrada" });
+
+    const oldDid = String((route as any).did);
+    const newDid = req.body?.did !== undefined ? String(req.body.did).trim() : oldDid;
+
+    if (req.body?.did !== undefined && !/^\d{8,15}$/.test(newDid)) {
+      return res.status(400).json({ message: "DID inválido (somente dígitos, 8-15 caracteres)" });
+    }
+
+    const newTarget = req.body?.destinationTarget !== undefined
+      ? String(req.body.destinationTarget).trim()
+      : String((route as any).destinationTarget);
+    const newEnabled = req.body?.enabled !== undefined ? Boolean(req.body.enabled) : Boolean((route as any).enabled);
+
+    if (!newTarget) return res.status(400).json({ message: "Destino obrigatório" });
+
+    try {
+      await route.update({
+        did: newDid,
+        description: req.body?.description !== undefined ? (req.body.description ? String(req.body.description).trim() : null) : (route as any).description,
+        destinationType: req.body?.destinationType || (route as any).destinationType,
+        destinationTarget: newTarget,
+        priority: req.body?.priority !== undefined ? Number(req.body.priority) : (route as any).priority,
+        enabled: newEnabled,
+      });
+
+      if (oldDid !== newDid) {
+        await removeInboundDidRoute({ did: oldDid });
+      }
+      if (newEnabled) {
+        await upsertInboundDidRoute({ did: newDid, destinationTarget: newTarget });
+      } else {
+        await removeInboundDidRoute({ did: newDid });
+      }
+      return res.json(route);
+    } catch (err: any) {
+      if (err.name === "SequelizeUniqueConstraintError") {
+        return res.status(409).json({ message: "DID já cadastrado" });
+      }
+      return res.status(500).json({ message: "Erro ao atualizar rota", detail: err.message });
+    }
+  });
+
+  router.delete("/inbound-routes/:id", verifyToken, async (req: Request, res: Response) => {
+    const route = await InboundRoute.findByPk(String(req.params.id));
+    if (!route) return res.status(404).json({ message: "Rota não encontrada" });
+    const did = String((route as any).did);
+    await route.destroy();
+    await removeInboundDidRoute({ did });
+    return res.json({ message: "Rota removida" });
+  });
+
+  router.post("/inbound-routes/reprovision-all", verifyToken, async (_req: Request, res: Response) => {
+    const routes = await InboundRoute.findAll();
+    await reprovisionAllInboundDidRoutes(
+      routes.map((r: any) => ({ did: r.did, destinationTarget: r.destinationTarget, enabled: r.enabled })),
+    );
+    return res.json({ total: routes.length });
+  });
+
+  // ── Error middleware (captura erros de todos os handlers async) ───────────
+  router.use(
+    (
+      err: any,
+      _req: Request,
+      res: Response,
+      _next: express.NextFunction,
+    ) => {
+      console.error("[API Error]", err?.message || err);
+      const status = err?.status || err?.statusCode || 500;
+      return res.status(status).json({
+        message: err?.message || "Erro interno do servidor",
+      });
+    },
+  );
 
   return router;
 };

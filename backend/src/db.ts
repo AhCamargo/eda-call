@@ -1,4 +1,4 @@
-import { Sequelize, DataTypes } from "sequelize";
+import { Sequelize, DataTypes, Op } from "sequelize";
 import config from "./config";
 
 if (!config.databaseUrl) {
@@ -383,6 +383,9 @@ export const InboundIvr = sequelize.define("InboundIvr", {
     allowNull: false,
     defaultValue: "SIP",
   },
+  scheduleEnabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+  scheduleJson: { type: DataTypes.TEXT, allowNull: true, defaultValue: null },
+  closedAudioFile: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
 });
 
 export const InboundIvrOption = sequelize.define("InboundIvrOption", {
@@ -405,6 +408,19 @@ InboundIvrOption.belongsTo(InboundIvr, { foreignKey: "ivrId" });
 
 VoipLine.hasMany(InboundIvr, { foreignKey: "voipLineId" });
 InboundIvr.belongsTo(VoipLine, { foreignKey: "voipLineId" });
+
+export const InboundRoute = sequelize.define("InboundRoute", {
+  did: { type: DataTypes.STRING, allowNull: false, unique: true },
+  description: { type: DataTypes.STRING, allowNull: true, defaultValue: null },
+  destinationType: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: "extension",
+  },
+  destinationTarget: { type: DataTypes.STRING, allowNull: false },
+  priority: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
+  enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+});
 
 export const syncDatabase = async () => {
   await sequelize.authenticate();
@@ -632,6 +648,14 @@ export const syncDatabase = async () => {
     .catch(() => {});
   await sequelize
     .query(
+      `ALTER TABLE "InboundIvrs"
+        ADD COLUMN IF NOT EXISTS "scheduleEnabled" BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS "scheduleJson" TEXT DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS "closedAudioFile" VARCHAR(255) DEFAULT NULL`,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
       `CREATE TABLE IF NOT EXISTS "InboundIvrOptions" (
         "id" SERIAL,
         "keyDigit" VARCHAR(1) NOT NULL,
@@ -681,5 +705,33 @@ export const syncDatabase = async () => {
       `ALTER TYPE "enum_InboundIvrOptions_actionType" ADD VALUE IF NOT EXISTS 'transfer_queue'`,
     )
     .catch(() => {});
+  // Corrige dialTechnology 'PJSIP' → 'SIP' em bancos criados com versões antigas
+  await sequelize
+    .query(`UPDATE "UraReverseCampaigns" SET "dialTechnology" = 'SIP' WHERE "dialTechnology" = 'PJSIP'`)
+    .catch(() => {});
+
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "InboundRoutes" (
+        "id" SERIAL,
+        "did" VARCHAR(255) NOT NULL UNIQUE,
+        "description" VARCHAR(255) DEFAULT NULL,
+        "destinationType" VARCHAR(50) NOT NULL DEFAULT 'extension',
+        "destinationTarget" VARCHAR(255) NOT NULL,
+        "priority" INTEGER NOT NULL DEFAULT 0,
+        "enabled" BOOLEAN NOT NULL DEFAULT true,
+        "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
   await sequelize.sync();
+
+  // Reset contatos travados em 'calling' após restart inesperado do backend
+  const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);
+  await UraReverseContact.update(
+    { status: "pending", lockedAt: null },
+    { where: { status: "calling", lockedAt: { [Op.lt]: staleThreshold } } },
+  ).catch(() => {});
 };

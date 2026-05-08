@@ -25,6 +25,7 @@ import {
   FolderOpen,
   ShieldAlert,
   Settings2,
+  PhoneIncoming,
 } from "lucide-react";
 
 const EXPANDED: number = 240;
@@ -217,6 +218,12 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         iconColor: "#34d399",
       },
     ];
+    items.push({
+      to: "/roteamento-entrada",
+      label: t("menu.inboundRouting"),
+      icon: PhoneIncoming,
+      iconColor: "#34d399",
+    });
     if (role === "admin") {
       items.push({
         to: "/audios-ura",

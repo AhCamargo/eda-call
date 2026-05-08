@@ -224,6 +224,28 @@ export interface IPbxContextValue {
   deleteRecording: (recordingId: string) => Promise<void>;
 }
 
+// Inbound Route
+export interface InboundRoute {
+  id: string;
+  did: string;
+  description?: string | null;
+  destinationType: "extension";
+  destinationTarget: string;
+  priority: number;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateInboundRoutePayload {
+  did: string;
+  description?: string;
+  destinationType: "extension";
+  destinationTarget: string;
+  priority?: number;
+  enabled?: boolean;
+}
+
 // Navigation
 export interface NavItem {
   to: string;

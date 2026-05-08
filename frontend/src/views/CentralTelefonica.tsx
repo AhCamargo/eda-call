@@ -45,6 +45,12 @@ interface IvrOption {
   targetExtension: string;
 }
 
+interface ScheduleRule {
+  days: string;
+  open: string;
+  close: string;
+}
+
 interface InboundIvr {
   id: number;
   name: string;
@@ -57,6 +63,9 @@ interface InboundIvr {
   fallbackLabel: string | null;
   dialTechnology: "SIP" | "PJSIP";
   options: IvrOption[];
+  scheduleEnabled: boolean;
+  scheduleJson: string | null;
+  closedAudioFile: string | null;
 }
 
 interface VoipLine {
@@ -118,7 +127,19 @@ const emptyForm = (): Omit<InboundIvr, "id"> => ({
   fallbackLabel: "Transbordo",
   dialTechnology: "SIP",
   options: [],
+  scheduleEnabled: false,
+  scheduleJson: null,
+  closedAudioFile: null,
 });
+
+const DAYS_OPTIONS = [
+  { value: "mon-fri", label: "Seg–Sex" },
+  { value: "mon-sat", label: "Seg–Sáb" },
+  { value: "mon-sun", label: "Todos os dias" },
+  { value: "sat-sun", label: "Sáb–Dom" },
+  { value: "sat", label: "Sábado" },
+  { value: "sun", label: "Domingo" },
+];
 
 interface IvrDialogProps {
   open: boolean;
@@ -418,6 +439,112 @@ function IvrDialog({ open, ivr, voipLines, onClose, onSave }: IvrDialogProps) {
             </div>
           ))}
         </div>
+
+          <Separator />
+
+          {/* Horário de atendimento */}
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Horário de atendimento
+            </p>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input accent-primary"
+                checked={form.scheduleEnabled}
+                onChange={(e) => setField("scheduleEnabled", e.target.checked)}
+              />
+              <span className="text-xs font-medium">Habilitar</span>
+            </label>
+          </div>
+
+          {form.scheduleEnabled && (
+            <div className="space-y-3">
+              <FieldRow label="Áudio fora do horário" hint="Caminho relativo, ex: custom/fora-horario">
+                <input
+                  value={form.closedAudioFile ?? ""}
+                  onChange={(e) => setField("closedAudioFile", e.target.value || null)}
+                  placeholder="custom/fora-horario"
+                  className={inputCls()}
+                />
+              </FieldRow>
+
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-muted-foreground">Regras de horário</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  type="button"
+                  onClick={() => {
+                    const rules: ScheduleRule[] = form.scheduleJson ? JSON.parse(form.scheduleJson) : [];
+                    rules.push({ days: "mon-fri", open: "08:00", close: "18:00" });
+                    setField("scheduleJson", JSON.stringify(rules));
+                  }}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Adicionar regra
+                </Button>
+              </div>
+
+              {(() => {
+                const rules: ScheduleRule[] = form.scheduleJson ? JSON.parse(form.scheduleJson) : [];
+                return rules.map((rule, idx) => (
+                  <div key={idx} className="grid grid-cols-[1fr_100px_100px_36px] gap-2 items-end">
+                    <FieldRow label="Dias">
+                      <select
+                        value={rule.days}
+                        onChange={(e) => {
+                          const rs = [...rules];
+                          rs[idx] = { ...rs[idx], days: e.target.value };
+                          setField("scheduleJson", JSON.stringify(rs));
+                        }}
+                        className={inputCls()}
+                      >
+                        {DAYS_OPTIONS.map((d) => (
+                          <option key={d.value} value={d.value}>{d.label}</option>
+                        ))}
+                      </select>
+                    </FieldRow>
+                    <FieldRow label="Abertura">
+                      <input
+                        type="time"
+                        value={rule.open}
+                        onChange={(e) => {
+                          const rs = [...rules];
+                          rs[idx] = { ...rs[idx], open: e.target.value };
+                          setField("scheduleJson", JSON.stringify(rs));
+                        }}
+                        className={inputCls()}
+                      />
+                    </FieldRow>
+                    <FieldRow label="Fechamento">
+                      <input
+                        type="time"
+                        value={rule.close}
+                        onChange={(e) => {
+                          const rs = [...rules];
+                          rs[idx] = { ...rs[idx], close: e.target.value };
+                          setField("scheduleJson", JSON.stringify(rs));
+                        }}
+                        className={inputCls()}
+                      />
+                    </FieldRow>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive mb-0.5"
+                      type="button"
+                      onClick={() => {
+                        const rs = rules.filter((_, i) => i !== idx);
+                        setField("scheduleJson", rs.length ? JSON.stringify(rs) : null);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ));
+              })()}
+            </div>
+          )}
 
         {saveError && (
           <Alert variant="destructive">

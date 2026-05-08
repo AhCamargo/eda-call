@@ -25,6 +25,9 @@ const config = {
     "/etc/asterisk-custom/sip_registrations.conf",
   asteriskSipMainFile:
     process.env.ASTERISK_SIP_MAIN_FILE || "/etc/asterisk/sip.conf",
+  asteriskInboundRoutesFile:
+    process.env.ASTERISK_INBOUND_ROUTES_FILE ||
+    "/etc/asterisk-custom/extensions_inbound.conf",
   asteriskWsUrl: process.env.ASTERISK_WS_URL || "ws://localhost:8088/ws",
   ami: {
     host: process.env.AMI_HOST || "asterisk",
