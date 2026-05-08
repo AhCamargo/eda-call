@@ -6,6 +6,8 @@ const {
   asteriskSipCustomFile,
   asteriskExtensionsCustomFile,
   asteriskQueuesCustomFile,
+  asteriskSipRegistrationsFile,
+  asteriskSipMainFile,
 } = config;
 
 const buildExtensionBlock = (
@@ -159,6 +161,68 @@ const removeNamedBlock = async ({
 };
 
 // ─────────────────────────────────────────────────────────
+// SIP Registration (register =>) management
+// ─────────────────────────────────────────────────────────
+
+const REGISTRATIONS_INCLUDE = `#include "${asteriskSipRegistrationsFile}"`;
+
+export const ensureSipRegistrationsIncluded = async () => {
+  try {
+    await ensureFile(asteriskSipRegistrationsFile);
+    const mainContent = await fs.readFile(asteriskSipMainFile, "utf-8");
+    if (mainContent.includes(REGISTRATIONS_INCLUDE)) return;
+
+    // Insert include at the end of [general] section (before next [ or EOF)
+    const generalIdx = mainContent.indexOf("[general]");
+    if (generalIdx === -1) return;
+    const nextSectionIdx = mainContent.indexOf("\n[", generalIdx + 1);
+    const insertAt =
+      nextSectionIdx !== -1 ? nextSectionIdx : mainContent.length;
+    const updated =
+      mainContent.slice(0, insertAt) +
+      `\n${REGISTRATIONS_INCLUDE}` +
+      mainContent.slice(insertAt);
+    await fs.writeFile(asteriskSipMainFile, updated, "utf-8");
+  } catch {
+    // sip.conf may not be writable in all environments — skip silently
+  }
+};
+
+const upsertSipRegistration = async ({
+  name,
+  username,
+  secret,
+  host,
+  port,
+}: {
+  name: string;
+  username: string;
+  secret: string;
+  host: string;
+  port: number;
+}) => {
+  const portSuffix = port && port !== 5060 ? `:${port}` : "";
+  await upsertNamedBlock({
+    filePath: asteriskSipRegistrationsFile,
+    sectionName: name,
+    blockContent: `register => ${username}:${secret}@${host}${portSuffix}`,
+    scope: "sip-register",
+  });
+};
+
+const removeSipRegistration = async ({ name }: { name: string }) => {
+  try {
+    await removeNamedBlock({
+      filePath: asteriskSipRegistrationsFile,
+      sectionName: name,
+      scope: "sip-register",
+    });
+  } catch {
+    // file may not exist yet
+  }
+};
+
+// ─────────────────────────────────────────────────────────
 
 export const upsertSipExtension = async ({
   number,
@@ -207,6 +271,7 @@ export const upsertSipVoipLine = async ({
   codecs = "ulaw,alaw",
   callLimit = 0,
   insecure = "invite,port",
+  register = false,
 }: {
   name: string;
   username: string;
@@ -221,6 +286,7 @@ export const upsertSipVoipLine = async ({
   codecs?: string;
   callLimit?: number;
   insecure?: string | null;
+  register?: boolean;
 }) => {
   const lineName = String(name || "").trim();
   if (!lineName) {
@@ -251,6 +317,13 @@ export const upsertSipVoipLine = async ({
     }),
     scope: "sip-voip-line",
   });
+
+  if (register) {
+    await ensureSipRegistrationsIncluded();
+    await upsertSipRegistration({ name: lineName, username, secret, host, port });
+  } else {
+    await removeSipRegistration({ name: lineName });
+  }
 
   try {
     await runCommand("sip reload");
@@ -289,6 +362,8 @@ export const removeVoipLineProvision = async ({ name }: { name: string }) => {
     sectionName: lineName,
     scope: "sip-voip-line",
   });
+
+  await removeSipRegistration({ name: lineName });
 
   try {
     await runCommand("sip reload");

@@ -20,6 +20,11 @@ const config = {
   asteriskQueuesCustomFile:
     process.env.ASTERISK_QUEUES_CUSTOM_FILE ||
     "/etc/asterisk-custom/queues_custom.conf",
+  asteriskSipRegistrationsFile:
+    process.env.ASTERISK_SIP_REGISTRATIONS_FILE ||
+    "/etc/asterisk-custom/sip_registrations.conf",
+  asteriskSipMainFile:
+    process.env.ASTERISK_SIP_MAIN_FILE || "/etc/asterisk/sip.conf",
   asteriskWsUrl: process.env.ASTERISK_WS_URL || "ws://localhost:8088/ws",
   ami: {
     host: process.env.AMI_HOST || "asterisk",

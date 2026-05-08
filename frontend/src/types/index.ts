@@ -62,6 +62,7 @@ export interface VoipLine {
   codecs?: string;
   callLimit?: number;
   insecure?: string;
+  register?: boolean;
 }
 
 export interface CreateVoipLinePayload {
@@ -79,6 +80,7 @@ export interface CreateVoipLinePayload {
   codecs?: string;
   callLimit?: number;
   insecure?: string;
+  register?: boolean;
 }
 
 // Campaign

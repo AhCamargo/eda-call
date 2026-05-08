@@ -99,6 +99,12 @@ export const VoipLine = sequelize.define("VoipLine", {
     allowNull: true,
     defaultValue: "invite,port",
   },
+  // register: envia "register =>" ao provedor para receber chamadas entrantes
+  register: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
 });
 
 export const Campaign = sequelize.define("Campaign", {
@@ -531,6 +537,9 @@ export const syncDatabase = async () => {
         END IF;
         IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='insecure') THEN
           ALTER TABLE "VoipLines" ADD COLUMN "insecure" VARCHAR(255) DEFAULT 'invite,port';
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='VoipLines' AND column_name='register') THEN
+          ALTER TABLE "VoipLines" ADD COLUMN "register" BOOLEAN NOT NULL DEFAULT false;
         END IF;
       END $$;`,
     )

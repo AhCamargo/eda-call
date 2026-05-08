@@ -1,5 +1,5 @@
 import { useEffect, useState, FC, FormEvent } from "react";
-import { Box, Button, Grid, TextField } from "@mui/material";
+import { Box, Button, FormControlLabel, Grid, Switch, TextField } from "@mui/material";
 import { useTranslation } from "react-i18next";
 import type { CreateVoipLinePayload } from "../types";
 
@@ -18,6 +18,7 @@ interface FormData {
   port: number | string;
   context: string;
   transport: string;
+  register: boolean;
 }
 
 const initialState: FormData = {
@@ -28,6 +29,7 @@ const initialState: FormData = {
   port: 5060,
   context: "default",
   transport: "transport-udp",
+  register: false,
 };
 
 const VoipForm: FC<VoipFormProps> = ({
@@ -37,10 +39,18 @@ const VoipForm: FC<VoipFormProps> = ({
   onCancel = null,
 }) => {
   const { t } = useTranslation();
-  const [form, setForm] = useState<FormData>(initialValues || initialState);
+  const [form, setForm] = useState<FormData>(
+    initialValues
+      ? { ...initialState, ...initialValues, register: initialValues.register ?? false }
+      : initialState,
+  );
 
   useEffect(() => {
-    setForm(initialValues || initialState);
+    if (initialValues) {
+      setForm({ ...initialState, ...initialValues, register: initialValues.register ?? false });
+    } else {
+      setForm(initialState);
+    }
   }, [initialValues]);
 
   const submit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
@@ -130,6 +140,19 @@ const VoipForm: FC<VoipFormProps> = ({
             }
             required
             fullWidth
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 3 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={form.register}
+                onChange={(e) =>
+                  setForm((prev) => ({ ...prev, register: e.target.checked }))
+                }
+              />
+            }
+            label={t("voip.registerWithProvider")}
           />
         </Grid>
         <Grid size={{ xs: 12, md: 3 }}>

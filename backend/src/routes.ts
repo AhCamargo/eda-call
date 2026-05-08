@@ -1287,6 +1287,7 @@ export const createRoutes = (io: Server) => {
       codecs = "ulaw,alaw",
       callLimit = 0,
       insecure = "invite,port",
+      register = false,
     } = req.body;
 
     let line: any;
@@ -1306,6 +1307,7 @@ export const createRoutes = (io: Server) => {
         codecs,
         callLimit,
         insecure,
+        register,
       });
     } catch (error: any) {
       if (error.name === "SequelizeUniqueConstraintError") {
@@ -1329,6 +1331,7 @@ export const createRoutes = (io: Server) => {
         codecs,
         callLimit,
         insecure,
+        register,
       });
     } catch (error: any) {
       return res.status(201).json({
@@ -1398,6 +1401,10 @@ export const createRoutes = (io: Server) => {
         req.body?.insecure !== undefined
           ? req.body.insecure || null
           : line.insecure,
+      register:
+        req.body?.register !== undefined
+          ? Boolean(req.body.register)
+          : Boolean(line.register),
     };
 
     if (
@@ -1436,6 +1443,7 @@ export const createRoutes = (io: Server) => {
       codecs: line.codecs,
       callLimit: line.callLimit,
       insecure: line.insecure,
+      register: line.register,
     });
 
     return res.json(line);
@@ -1476,6 +1484,7 @@ export const createRoutes = (io: Server) => {
         codecs: line.codecs,
         callLimit: line.callLimit,
         insecure: line.insecure,
+        register: line.register,
       });
 
       return res.json({ message: "Linha VoIP provisionada no Asterisk" });

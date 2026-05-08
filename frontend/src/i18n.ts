@@ -109,6 +109,7 @@ const resources = {
         port: "Porta",
         context: "Contexto",
         transport: "Transporte",
+        registerWithProvider: "Registrar no provedor",
       },
       reports: {
         title: "Relatórios",
@@ -243,6 +244,7 @@ const resources = {
         port: "Port",
         context: "Context",
         transport: "Transport",
+        registerWithProvider: "Register with provider",
       },
       reports: {
         title: "Reports",
@@ -377,6 +379,7 @@ const resources = {
         port: "Puerto",
         context: "Contexto",
         transport: "Transporte",
+        registerWithProvider: "Registrar en proveedor",
       },
       reports: {
         title: "Informes",

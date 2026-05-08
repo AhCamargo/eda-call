@@ -55,6 +55,7 @@ const emptyForm = {
   codecs: ["ulaw", "alaw"],
   callLimit: 0,
   insecure: "invite,port",
+  register: false,
 };
 
 function FieldRow({
@@ -190,6 +191,7 @@ export default function LinhasVoip() {
       codecs: (line.codecs || "ulaw,alaw").split(",").map((c) => c.trim()),
       callLimit: line.callLimit ?? 0,
       insecure: line.insecure ?? "invite,port",
+      register: line.register ?? false,
     });
     setShowAdvanced(false);
     setDialogOpen(true);
@@ -509,6 +511,23 @@ export default function LinhasVoip() {
               selected={form.codecs}
               onChange={(v) => set("codecs", v)}
             />
+
+            {/* Registro no provedor */}
+            <Separator />
+            <label className="flex items-center gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 rounded border-input accent-primary"
+                checked={form.register}
+                onChange={(e) => set("register", e.target.checked)}
+              />
+              <span className="text-sm font-medium">
+                Registrar no provedor{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  (envia <code>register =&gt;</code> ao provedor para receber chamadas entrantes)
+                </span>
+              </span>
+            </label>
 
             {/* Avançado */}
             <Separator />
