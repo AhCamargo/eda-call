@@ -59,8 +59,10 @@ SERVER_IP="${INPUT_IP:-$DETECTED_IP}"
 ok "IP do servidor: ${SERVER_IP}"
 echo ""
 
-# URL de acesso ao frontend (API do backend)
-read -rp "URL de acesso ao sistema (ex: http://${SERVER_IP} ou http://pbx.empresa.local): " INPUT_URL
+# URL de acesso à API do backend (porta 5000)
+echo -e "  O frontend precisa saber o endereço da API para funcionar no navegador."
+echo -e "  Normalmente é ${BOLD}http://${SERVER_IP}:5000${RESET} (padrão)"
+read -rp "URL da API (Enter para usar http://${SERVER_IP}:5000): " INPUT_URL
 VITE_API_URL="${INPUT_URL:-http://${SERVER_IP}:5000}"
 # Garante que não termina com /
 VITE_API_URL="${VITE_API_URL%/}"
@@ -149,6 +151,7 @@ for f in extensions_custom.conf queues_custom.conf http.conf pjsip_custom.conf; 
     cp "asterisk/config/${f}" "${ASTERISK_CUSTOM_DIR}/${f}"
 done
 touch "${ASTERISK_CUSTOM_DIR}/sip_custom.conf"
+touch "${ASTERISK_CUSTOM_DIR}/sip_registrations.conf"
 
 # manager.conf — sempre sobrescreve para refletir a senha gerada
 cp asterisk/config/manager.conf /etc/asterisk/manager.conf
@@ -196,6 +199,10 @@ ok "RTP configurado (portas 10000-10099)"
 if [[ -f /etc/asterisk/sip.conf ]]; then
   grep -q "sip_nat_runtime.conf" /etc/asterisk/sip.conf || \
     sed -i '1s/^/#include \/etc\/asterisk\/sip_nat_runtime.conf\n/' /etc/asterisk/sip.conf
+  # sip_registrations.conf precisa ser incluído dentro do [general] para que
+  # as diretivas "register =>" sejam processadas pelo chan_sip
+  grep -q "sip_registrations.conf" /etc/asterisk/sip.conf || \
+    sed -i '/^\[general\]/a #include /etc/asterisk-custom/sip_registrations.conf' /etc/asterisk/sip.conf
   grep -q "sip_custom.conf" /etc/asterisk/sip.conf || \
     printf "\n#include /etc/asterisk-custom/sip_custom.conf\n" >> /etc/asterisk/sip.conf
 fi
