@@ -22,7 +22,8 @@ header() {
   echo ""
 }
 
-gen_secret() { tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "${1:-32}" || true; }
+gen_secret()      { tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "${1:-32}" || true; }
+gen_secret_url()  { tr -dc 'A-Za-z0-9'       </dev/urandom | head -c "${1:-32}" || true; }
 
 # ── Pré-requisitos ────────────────────────────────────────────────────────────
 [[ $EUID -ne 0 ]] && die "Execute como root: sudo bash install.sh"
@@ -70,7 +71,7 @@ echo ""
 # ── Geração de segredos ───────────────────────────────────────────────────────
 header "Gerando senhas seguras"
 
-PG_PASSWORD=$(gen_secret 24)
+PG_PASSWORD=$(gen_secret_url 24)
 JWT_SECRET=$(gen_secret 48)
 AMI_PASSWORD=$(gen_secret 20)
 INTERNAL_KEY=$(gen_secret 32)
