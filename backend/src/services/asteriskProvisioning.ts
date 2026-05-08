@@ -7,7 +7,7 @@ const {
   asteriskExtensionsCustomFile,
   asteriskQueuesCustomFile,
   asteriskSipRegistrationsFile,
-  asteriskSipMainFile,
+  asteriskSipNatFile,
   asteriskInboundRoutesFile,
 } = config;
 
@@ -170,22 +170,17 @@ const REGISTRATIONS_INCLUDE = `#include "${asteriskSipRegistrationsFile}"`;
 export const ensureSipRegistrationsIncluded = async () => {
   try {
     await ensureFile(asteriskSipRegistrationsFile);
-    const mainContent = await fs.readFile(asteriskSipMainFile, "utf-8");
-    if (mainContent.includes(REGISTRATIONS_INCLUDE)) return;
-
-    // Insert include at the end of [general] section (before next [ or EOF)
-    const generalIdx = mainContent.indexOf("[general]");
-    if (generalIdx === -1) return;
-    const nextSectionIdx = mainContent.indexOf("\n[", generalIdx + 1);
-    const insertAt =
-      nextSectionIdx !== -1 ? nextSectionIdx : mainContent.length;
-    const updated =
-      mainContent.slice(0, insertAt) +
-      `\n${REGISTRATIONS_INCLUDE}` +
-      mainContent.slice(insertAt);
-    await fs.writeFile(asteriskSipMainFile, updated, "utf-8");
+    // sip_nat_runtime.conf has the FIRST [general] Asterisk reads, so register =>
+    // directives must live there (not in sip.conf's second [general]).
+    const natContent = await fs.readFile(asteriskSipNatFile, "utf-8");
+    if (natContent.includes(REGISTRATIONS_INCLUDE)) return;
+    await fs.writeFile(
+      asteriskSipNatFile,
+      `${natContent.trimEnd()}\n${REGISTRATIONS_INCLUDE}\n`,
+      "utf-8",
+    );
   } catch {
-    // sip.conf may not be writable in all environments — skip silently
+    // sip_nat_runtime.conf may not be writable in all environments — skip silently
   }
 };
 

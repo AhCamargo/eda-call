@@ -105,6 +105,10 @@ export const originateReverseIvr = ({
     ? `SIP/${voipLineName}/${phoneNumber}`
     : `SIP/${phoneNumber}`;
 
+  // Cada variável precisa ser um elemento separado no array.
+  // O asterisk-manager envia um header "Variable:" por elemento,
+  // que é o único formato que o AMI parse corretamente como variáveis individuais.
+  // Não use .join("|") — o Asterisk trataria a string inteira como valor de APP_PHONE.
   const vars = [
     `APP_PHONE=${phoneNumber}`,
     `APP_CAMPAIGN_ID=${campaignId || ""}`,
@@ -121,7 +125,7 @@ export const originateReverseIvr = ({
     ...Object.entries(extraVariables).map(
       ([key, value]) => `${key}=${value == null ? "" : value}`,
     ),
-  ].join("|");
+  ];
 
   return new Promise((resolve, reject) => {
     client.action(

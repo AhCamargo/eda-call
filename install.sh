@@ -164,6 +164,9 @@ cp asterisk/config/cdr_manager.conf /etc/asterisk/cdr_manager.conf
 ok "cdr_manager.conf configurado"
 
 # sip_nat_runtime.conf — configura IP externo e RTP
+# IMPORTANTE: este arquivo é o primeiro [general] que o Asterisk lê (incluído na
+# linha 1 do sip.conf). As diretivas "register =>" SÓ funcionam se estiverem aqui
+# (chan_sip processa registrations apenas do primeiro [general] encontrado).
 cat > /etc/asterisk/sip_nat_runtime.conf << SIPEOF
 ; Gerado pelo instalador EDACall — não editar manualmente
 [general]
@@ -180,6 +183,8 @@ bindaddr=0.0.0.0
 nat=force_rport
 allowguest=no
 alwaysauthreject=yes
+; Registros SIP gerenciados pelo EDACall (register => directives)
+#include /etc/asterisk-custom/sip_registrations.conf
 SIPEOF
 
 ok "NAT/SIP configurado (IP: ${SERVER_IP})"
@@ -200,12 +205,11 @@ ok "RTP configurado (portas 10000-10099)"
 if [[ -f /etc/asterisk/sip.conf ]]; then
   grep -q "sip_nat_runtime.conf" /etc/asterisk/sip.conf || \
     sed -i '1s/^/#include \/etc\/asterisk\/sip_nat_runtime.conf\n/' /etc/asterisk/sip.conf
-  # sip_registrations.conf precisa ser incluído dentro do [general] para que
-  # as diretivas "register =>" sejam processadas pelo chan_sip
-  grep -q "sip_registrations.conf" /etc/asterisk/sip.conf || \
-    sed -i '/^\[general\]/a #include /etc/asterisk-custom/sip_registrations.conf' /etc/asterisk/sip.conf
   grep -q "sip_custom.conf" /etc/asterisk/sip.conf || \
     printf "\n#include /etc/asterisk-custom/sip_custom.conf\n" >> /etc/asterisk/sip.conf
+  # Remove qualquer include de sip_registrations.conf que possa ter sido adicionado
+  # ao sip.conf pelo instalador anterior (era inútil pois ficava no segundo [general])
+  sed -i '/^#include.*sip_registrations\.conf/d' /etc/asterisk/sip.conf 2>/dev/null || true
 fi
 if [[ -f /etc/asterisk/extensions.conf ]]; then
   grep -q "extensions_custom.conf" /etc/asterisk/extensions.conf || \
