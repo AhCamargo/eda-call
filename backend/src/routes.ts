@@ -1359,7 +1359,7 @@ export const createRoutes = (io: Server) => {
           ? String(req.body.username).trim()
           : line.username,
       secret:
-        req.body?.secret !== undefined
+        req.body?.secret !== undefined && String(req.body.secret).trim() !== ""
           ? String(req.body.secret).trim()
           : line.secret,
       host:
