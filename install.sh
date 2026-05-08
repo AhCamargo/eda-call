@@ -22,8 +22,7 @@ header() {
   echo ""
 }
 
-gen_secret()      { tr -dc 'A-Za-z0-9!@#%^&*' </dev/urandom | head -c "${1:-32}" || true; }
-gen_secret_url()  { tr -dc 'A-Za-z0-9'       </dev/urandom | head -c "${1:-32}" || true; }
+gen_secret() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-32}" || true; }
 
 # ── Pré-requisitos ────────────────────────────────────────────────────────────
 [[ $EUID -ne 0 ]] && die "Execute como root: sudo bash install.sh"
@@ -71,15 +70,12 @@ echo ""
 # ── Geração de segredos ───────────────────────────────────────────────────────
 header "Gerando senhas seguras"
 
-PG_PASSWORD=$(gen_secret_url 24)
+PG_PASSWORD=$(gen_secret 24)
 JWT_SECRET=$(gen_secret 48)
 AMI_PASSWORD=$(gen_secret 20)
-INTERNAL_KEY=$(gen_secret 32)
-
 ok "Senha PostgreSQL gerada"
 ok "JWT Secret gerado"
 ok "Senha AMI gerada"
-ok "Chave interna gerada"
 
 # ── Instalação do Docker ──────────────────────────────────────────────────────
 header "Instalando dependências"
@@ -129,7 +125,6 @@ POSTGRES_PASSWORD=${PG_PASSWORD}
 
 # ── Backend ───────────────────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
-INTERNAL_API_KEY=${INTERNAL_KEY}
 BACKEND_PORT=5000
 
 # ── Asterisk AMI (Asterisk roda direto no SO — não em Docker) ─────────────────

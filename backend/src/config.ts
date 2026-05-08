@@ -5,7 +5,6 @@ const config = {
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: process.env.JWT_SECRET || "supersecret",
   backendInternalUrl: process.env.BACKEND_INTERNAL_URL || "http://backend:5000",
-  internalApiKey: process.env.INTERNAL_API_KEY || "edacall-internal-key",
   asteriskRecordingsDir:
     process.env.ASTERISK_RECORDINGS_DIR || "/asterisk-recordings",
   asteriskSoundsDir: process.env.ASTERISK_SOUNDS_DIR || "/asterisk-sounds",

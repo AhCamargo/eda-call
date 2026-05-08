@@ -47,7 +47,7 @@ import {
   AsteriskQueueMember,
 } from "./db";
 
-const { internalApiKey, asteriskSoundsDir, asteriskRecordingsDir } = config;
+const { asteriskSoundsDir, asteriskRecordingsDir } = config;
 
 const upload = multer({ storage: multer.memoryStorage() });
 const uploadAudio = multer({ storage: multer.memoryStorage() });
@@ -397,11 +397,6 @@ export const createRoutes = (io: Server) => {
   );
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
-    const receivedKey = req.headers["x-internal-key"];
-    if (!receivedKey || receivedKey !== internalApiKey) {
-      return res.status(401).json({ message: "Não autorizado" });
-    }
-
     const {
       uraRef = null,
       campaignId = null,

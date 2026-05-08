@@ -39,7 +39,6 @@ services:
       ASTERISK_QUEUES_CUSTOM_FILE: /etc/asterisk-custom/queues_custom.conf
       ASTERISK_RECORDINGS_DIR: /asterisk-recordings
       ASTERISK_SOUNDS_DIR: /asterisk-sounds
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     ports:
       - "5000:5000"
     volumes:
