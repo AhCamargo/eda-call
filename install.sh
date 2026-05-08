@@ -50,16 +50,17 @@ echo ""
 # ── Coleta de informações ─────────────────────────────────────────────────────
 header "Configuração da instalação"
 
-# IP do servidor
+# IP do servidor na rede local
 DETECTED_IP=$(hostname -I | awk '{print $1}')
-echo -e "IP detectado da rede: ${BOLD}${DETECTED_IP}${RESET}"
+echo -e "IP detectado na rede local: ${BOLD}${DETECTED_IP}${RESET}"
+echo -e "  Softphones e ramais usarão este IP para se conectar ao PABX."
 read -rp "IP do servidor (Enter para usar ${DETECTED_IP}): " INPUT_IP
 SERVER_IP="${INPUT_IP:-$DETECTED_IP}"
 ok "IP do servidor: ${SERVER_IP}"
 echo ""
 
-# URL de acesso ao frontend
-read -rp "URL de acesso ao sistema (ex: http://${SERVER_IP} ou https://pbx.empresa.com): " INPUT_URL
+# URL de acesso ao frontend (API do backend)
+read -rp "URL de acesso ao sistema (ex: http://${SERVER_IP} ou http://pbx.empresa.local): " INPUT_URL
 VITE_API_URL="${INPUT_URL:-http://${SERVER_IP}:5000}"
 # Garante que não termina com /
 VITE_API_URL="${VITE_API_URL%/}"
@@ -67,8 +68,9 @@ ok "URL da API: ${VITE_API_URL}"
 echo ""
 
 # Tronco SIP (opcional)
-echo -e "Registro SIP do tronco (operadora). Formato: ${BOLD}usuario:senha@host:porta${RESET}"
-echo -e "  Deixe em branco para configurar depois."
+echo -e "Registro SIP do tronco (operadora). Formato: ${BOLD}usuario:senha@sip.operadora.com.br${RESET}"
+echo -e "  Pode incluir porta: usuario:senha@host:5060"
+echo -e "  Deixe em branco para configurar depois pelo painel."
 read -rp "Registro SIP: " EFIX_REGISTER
 echo ""
 
@@ -110,6 +112,16 @@ https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
   ok "Docker instalado: $(docker --version)"
 fi
 
+# ── Instalação do Asterisk ────────────────────────────────────────────────────
+if command -v asterisk &>/dev/null; then
+  ok "Asterisk já instalado: $(asterisk -V 2>/dev/null | head -1)"
+else
+  info "Instalando Asterisk, espeak-ng e sox..."
+  apt-get update -qq
+  apt-get install -y -qq asterisk espeak-ng sox
+  ok "Asterisk instalado: $(asterisk -V 2>/dev/null | head -1)"
+fi
+
 # ── Grava o .env ─────────────────────────────────────────────────────────────
 header "Criando arquivo de configuração (.env)"
 
@@ -126,15 +138,9 @@ JWT_SECRET=${JWT_SECRET}
 INTERNAL_API_KEY=${INTERNAL_KEY}
 BACKEND_PORT=5000
 
-# ── Asterisk AMI ──────────────────────────────────────────────────────────────
+# ── Asterisk AMI (Asterisk roda direto no SO — não em Docker) ─────────────────
 AMI_USERNAME=admin
 AMI_PASSWORD=${AMI_PASSWORD}
-
-# ── Asterisk — IP do servidor (para NAT/SDP correto) ─────────────────────────
-ASTERISK_EXTERN_IP=${SERVER_IP}
-
-# ── Registro SIP no tronco (operadora) ───────────────────────────────────────
-ASTERISK_EFIX_REGISTER=${EFIX_REGISTER}
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 VITE_API_URL=${VITE_API_URL}
@@ -142,13 +148,111 @@ EOF
 
 ok ".env criado"
 
-# ── Atualiza manager.conf com a senha AMI gerada ─────────────────────────────
-MANAGER_CONF="asterisk/config/manager.conf"
-if [[ -f "$MANAGER_CONF" ]]; then
-  # Substitui a senha se a linha existir, senão preserva o arquivo
-  sed -i "s/^secret\s*=.*/secret = ${AMI_PASSWORD}/" "$MANAGER_CONF"
-  ok "manager.conf atualizado com senha AMI"
+# ── Configura Asterisk (roda nativo no SO) ────────────────────────────────────
+header "Configurando Asterisk"
+
+ASTERISK_CUSTOM_DIR="/etc/asterisk-custom"
+mkdir -p "${ASTERISK_CUSTOM_DIR}"
+
+# Copia configs iniciais — cp -n não sobrescreve (backend gerencia estes arquivos)
+for f in extensions_custom.conf queues_custom.conf http.conf pjsip_custom.conf; do
+  [[ -f "asterisk/config/${f}" && ! -f "${ASTERISK_CUSTOM_DIR}/${f}" ]] && \
+    cp "asterisk/config/${f}" "${ASTERISK_CUSTOM_DIR}/${f}"
+done
+touch "${ASTERISK_CUSTOM_DIR}/sip_custom.conf"
+
+# manager.conf — sempre sobrescreve para refletir a senha gerada
+cp asterisk/config/manager.conf /etc/asterisk/manager.conf
+sed -i "s/^secret\s*=.*/secret = ${AMI_PASSWORD}/" /etc/asterisk/manager.conf
+ok "manager.conf atualizado com senha AMI gerada"
+
+# sip_nat_runtime.conf — configura IP externo e RTP
+cat > /etc/asterisk/sip_nat_runtime.conf << SIPEOF
+; Gerado pelo instalador EDACall — não editar manualmente
+[general]
+externip=${SERVER_IP}
+; Apenas loopback e rede interna Docker ficam em localnet.
+; Clientes LAN (192.168.x, 10.x) são tratados como externos para que
+; o Asterisk use externip no SDP — áudio funciona corretamente.
+localnet=127.0.0.0/8
+localnet=172.16.0.0/12
+rtpstart=10000
+rtpend=10099
+directmedia=no
+bindaddr=0.0.0.0
+nat=force_rport
+allowguest=no
+alwaysauthreject=yes
+SIPEOF
+
+if [[ -n "${EFIX_REGISTER}" ]]; then
+  REGISTER_AFTER_AT="${EFIX_REGISTER##*@}"
+  if [[ "${REGISTER_AFTER_AT}" == *:* ]]; then
+    REGISTER_LINE="${EFIX_REGISTER}"
+  else
+    REGISTER_LINE="${EFIX_REGISTER}:5060"
+  fi
+  printf "\nregister => %s\n" "${REGISTER_LINE}" >> /etc/asterisk/sip_nat_runtime.conf
 fi
+ok "NAT/SIP configurado (IP: ${SERVER_IP})"
+
+# rtp.conf — range de portas para áudio
+cat > /etc/asterisk/rtp_runtime.conf << 'RTPEOF'
+[general]
+rtpstart=10000
+rtpend=10099
+RTPEOF
+if [[ -f /etc/asterisk/rtp.conf ]]; then
+  grep -q "rtp_runtime.conf" /etc/asterisk/rtp.conf || \
+    printf "\n#include /etc/asterisk/rtp_runtime.conf\n" >> /etc/asterisk/rtp.conf
+fi
+ok "RTP configurado (portas 10000-10099)"
+
+# Inclui configs customizadas nos arquivos principais do Asterisk
+if [[ -f /etc/asterisk/sip.conf ]]; then
+  grep -q "sip_nat_runtime.conf" /etc/asterisk/sip.conf || \
+    sed -i '1s/^/#include \/etc\/asterisk\/sip_nat_runtime.conf\n/' /etc/asterisk/sip.conf
+  grep -q "sip_custom.conf" /etc/asterisk/sip.conf || \
+    printf "\n#include /etc/asterisk-custom/sip_custom.conf\n" >> /etc/asterisk/sip.conf
+fi
+if [[ -f /etc/asterisk/extensions.conf ]]; then
+  grep -q "extensions_custom.conf" /etc/asterisk/extensions.conf || \
+    printf "\n#include /etc/asterisk-custom/extensions_custom.conf\n" >> /etc/asterisk/extensions.conf
+fi
+if [[ -f /etc/asterisk/queues.conf ]]; then
+  grep -q "queues_custom.conf" /etc/asterisk/queues.conf || \
+    printf "\n#include /etc/asterisk-custom/queues_custom.conf\n" >> /etc/asterisk/queues.conf
+fi
+ok "Arquivos de configuração do Asterisk atualizados"
+
+# Gera áudios de URA padrão em PT-BR
+SOUNDS_DIR="/var/lib/asterisk/sounds/custom"
+mkdir -p "${SOUNDS_DIR}"
+
+_gen_sound() {
+  local out="$1" text="$2" tmp="${1}.tmp.wav" ulaw="${1%.wav}.ulaw"
+  [[ -f "$out" && -f "$ulaw" ]] && return 0
+  command -v espeak-ng >/dev/null 2>&1 || return 0
+  command -v sox >/dev/null 2>&1 || return 0
+  espeak-ng -v pt-br -s 145 -w "$tmp" "$text" 2>/dev/null || return 0
+  sox "$tmp" -r 8000 -c 1 -b 16 -e signed-integer "$out" 2>/dev/null || true
+  sox "$tmp" -r 8000 -c 1 -e u-law -b 8 -t ul "$ulaw" 2>/dev/null || true
+  rm -f "$tmp"
+}
+
+_gen_sound "${SOUNDS_DIR}/edacall-menu-ptbr.wav" \
+  "Ola. Bem-vindo ao atendimento EDACall. Digite um para vendas, dois para suporte tecnico, ou tres para financeiro."
+_gen_sound "${SOUNDS_DIR}/edacall-opcao-invalida-ptbr.wav" \
+  "Opcao invalida ou nenhuma opcao digitada. Encerrando atendimento."
+ok "Áudios de URA gerados"
+
+# Ajusta permissões para o Asterisk acessar os diretórios de gravações e sons
+chown -R asterisk:asterisk /var/spool/asterisk /var/lib/asterisk/sounds/custom 2>/dev/null || true
+
+# Inicia e habilita o Asterisk no boot
+systemctl enable asterisk
+systemctl restart asterisk
+ok "Asterisk iniciado e habilitado no boot"
 
 # ── Firewall ──────────────────────────────────────────────────────────────────
 header "Configurando firewall (UFW)"
@@ -159,7 +263,6 @@ if command -v ufw &>/dev/null; then
   ufw allow 80/tcp       comment "EDACall Frontend"
   ufw allow 5000/tcp     comment "EDACall API"
   ufw allow 5060/udp     comment "SIP"
-  ufw allow 5038/tcp     comment "AMI (local)"
   ufw allow 10000:10099/udp comment "RTP Audio"
   ufw reload
   ok "Firewall configurado"
@@ -186,9 +289,9 @@ INSTALL_DIR="$(pwd)"
 
 cat > /etc/systemd/system/edacall.service <<EOF
 [Unit]
-Description=EDACall PABX
-Requires=docker.service
-After=docker.service network-online.target
+Description=EDACall PABX (backend + frontend + banco de dados)
+Requires=docker.service asterisk.service
+After=docker.service asterisk.service network-online.target
 Wants=network-online.target
 
 [Service]
@@ -247,9 +350,11 @@ echo -e "    Porta    : ${CYAN}5060 (UDP)${RESET}"
 echo -e "    Protocolo: ${CYAN}SIP${RESET}"
 echo ""
 echo -e "  ${BOLD}Comandos úteis:${RESET}"
-echo -e "    Ver logs    : ${CYAN}docker compose -f docker-compose.prod.yml logs -f${RESET}"
-echo -e "    Reiniciar   : ${CYAN}systemctl restart edacall${RESET}"
-echo -e "    Status      : ${CYAN}docker compose -f docker-compose.prod.yml ps${RESET}"
+echo -e "    Logs backend  : ${CYAN}docker compose -f docker-compose.prod.yml logs -f backend${RESET}"
+echo -e "    Logs Asterisk : ${CYAN}journalctl -u asterisk -f${RESET}"
+echo -e "    Console AMI   : ${CYAN}asterisk -rvvv${RESET}"
+echo -e "    Reiniciar tudo: ${CYAN}systemctl restart asterisk && systemctl restart edacall${RESET}"
+echo -e "    Status        : ${CYAN}docker compose -f docker-compose.prod.yml ps${RESET}"
 echo ""
 echo -e "  ${BOLD}Arquivo de configuração:${RESET} ${CYAN}${INSTALL_DIR}/.env${RESET}"
 echo ""

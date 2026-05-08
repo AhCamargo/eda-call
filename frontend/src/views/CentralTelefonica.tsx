@@ -180,11 +180,18 @@ function IvrDialog({ open, ivr, voipLines, onClose, onSave }: IvrDialogProps) {
   const usedKeys = form.options.map((o) => o.keyDigit);
   const availableKeys = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
 
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSubmit = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(form, ivr?.id);
       onClose();
+    } catch (e: any) {
+      setSaveError(
+        e?.response?.data?.message || "Erro ao salvar central telefônica.",
+      );
     } finally {
       setSaving(false);
     }
@@ -411,6 +418,13 @@ function IvrDialog({ open, ivr, voipLines, onClose, onSave }: IvrDialogProps) {
             </div>
           ))}
         </div>
+
+        {saveError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{saveError}</AlertDescription>
+          </Alert>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>

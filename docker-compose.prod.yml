@@ -15,25 +15,6 @@ services:
       retries: 20
     restart: unless-stopped
 
-  asterisk:
-    build:
-      context: ./asterisk
-      dockerfile: Dockerfile.prod
-    container_name: edacall_asterisk
-    ports:
-      - "5038:5038"
-      - "5060:5060/udp"
-      - "10000-10099:10000-10099/udp"
-    environment:
-      ASTERISK_EXTERN_IP: ${ASTERISK_EXTERN_IP}
-      ASTERISK_EFIX_REGISTER: ${ASTERISK_EFIX_REGISTER:-}
-    volumes:
-      - asterisk_config:/etc/asterisk-custom
-      - asterisk_recordings:/var/spool/asterisk/monitor
-      - asterisk_sounds:/var/lib/asterisk/sounds/custom
-      - ./asterisk/logs:/var/log/asterisk
-    restart: unless-stopped
-
   backend:
     build:
       context: ./backend
@@ -42,14 +23,14 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      asterisk:
-        condition: service_started
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       PORT: 5000
       DATABASE_URL: postgres://${POSTGRES_USER:-edacall}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-edacall}
       JWT_SECRET: ${JWT_SECRET}
-      AMI_HOST: asterisk
+      AMI_HOST: host.docker.internal
       AMI_PORT: 5038
       AMI_USERNAME: ${AMI_USERNAME:-admin}
       AMI_PASSWORD: ${AMI_PASSWORD}
@@ -62,10 +43,9 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      - asterisk_config:/etc/asterisk-custom
-      - asterisk_recordings:/asterisk-recordings
-      - asterisk_sounds:/asterisk-sounds
-      - /var/run/fail2ban/fail2ban.sock:/var/run/fail2ban/fail2ban.sock
+      - /etc/asterisk-custom:/etc/asterisk-custom
+      - /var/spool/asterisk/monitor:/asterisk-recordings
+      - /var/lib/asterisk/sounds/custom:/asterisk-sounds
     restart: unless-stopped
 
   frontend:
@@ -83,6 +63,3 @@ services:
 
 volumes:
   postgres_data:
-  asterisk_config:
-  asterisk_recordings:
-  asterisk_sounds:

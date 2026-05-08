@@ -3,9 +3,14 @@ set -eu
 
 mkdir -p /etc/asterisk-custom
 
-# Seed shared config volume on first start.
+# Seed shared config volume on first start (não sobrescreve arquivos gerenciados pelo backend).
 if [ -d /opt/edacall-config ]; then
   cp -n /opt/edacall-config/* /etc/asterisk-custom/ 2>/dev/null || true
+fi
+
+# manager.conf pode ter senha nova a cada rebuild — sempre sobrescreve.
+if [ -f /opt/edacall-config/manager.conf ]; then
+  cp /opt/edacall-config/manager.conf /etc/asterisk-custom/manager.conf
 fi
 
 if [ ! -f /etc/asterisk-custom/sip_custom.conf ]; then
@@ -48,10 +53,11 @@ cat > /etc/asterisk/sip_nat_runtime.conf << EOF
 ; Gerado automaticamente pelo entrypoint — não editar manualmente
 [general]
 externip=${EXTERN_IP}
+; localnet cobre apenas loopback e redes internas do Docker.
+; Redes LAN (192.168.x.x, 10.x.x.x) ficam fora do localnet para que o
+; Asterisk use externip no SDP — necessário para áudio funcionar com Docker bridge.
 localnet=127.0.0.0/8
-localnet=10.0.0.0/8
 localnet=172.16.0.0/12
-localnet=192.168.0.0/16
 rtpstart=10000
 rtpend=10099
 directmedia=no
@@ -62,7 +68,13 @@ alwaysauthreject=yes
 EOF
 
 if [ -n "${EDACALL_REGISTER}" ]; then
-  printf "\nregister => ${EDACALL_REGISTER}:5060\n" >> /etc/asterisk/sip_nat_runtime.conf
+  # Adiciona :5060 como porta padrão apenas se o usuário não especificou porta após o @
+  REGISTER_AFTER_AT="${EDACALL_REGISTER##*@}"
+  case "${REGISTER_AFTER_AT}" in
+    *:*) REGISTER_LINE="${EDACALL_REGISTER}" ;;
+    *)   REGISTER_LINE="${EDACALL_REGISTER}:5060" ;;
+  esac
+  printf "\nregister => %s\n" "${REGISTER_LINE}" >> /etc/asterisk/sip_nat_runtime.conf
 fi
 
 if [ -f /etc/asterisk/sip.conf ]; then

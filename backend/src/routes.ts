@@ -2219,6 +2219,14 @@ export const createRoutes = (io: Server) => {
       return res.status(400).json({ message: "name e contextName são obrigatórios" });
     }
 
+    const existing = await InboundIvr.findOne({
+      where: { contextName: String(contextName).trim() },
+    });
+    if (existing)
+      return res.status(409).json({
+        message: `Já existe uma central com o contextName '${contextName}'. Escolha um nome de contexto diferente.`,
+      });
+
     const ivr = (await InboundIvr.create({
       name: String(name).trim(),
       contextName: String(contextName).trim(),
