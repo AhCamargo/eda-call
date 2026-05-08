@@ -249,6 +249,7 @@ if command -v ufw &>/dev/null; then
   ufw allow 5000/tcp     comment "EDACall API"
   ufw allow 5060/udp     comment "SIP"
   ufw allow 10000:10099/udp comment "RTP Audio"
+  ufw allow from 172.16.0.0/12 to any port 5038 comment "AMI Docker"
   ufw reload
   ok "Firewall configurado"
 else
@@ -327,7 +328,7 @@ echo -e "    API      : ${CYAN}http://${SERVER_IP}:5000${RESET}"
 echo ""
 echo -e "  ${BOLD}Credenciais padrão de primeiro acesso:${RESET}"
 echo -e "    Usuário  : ${BOLD}admin${RESET}"
-echo -e "    Senha    : ${BOLD}admin123${RESET}  ← troque imediatamente!"
+echo -e "    Senha    : ${BOLD}123456${RESET}  ← troque imediatamente!"
 echo ""
 echo -e "  ${BOLD}Configuração SIP dos softphones:${RESET}"
 echo -e "    Servidor : ${CYAN}${SERVER_IP}${RESET}"
