@@ -445,10 +445,9 @@ export const upsertTrunkInboundRoute = async ({
 ; exten => s captura quando o provedor não envia o DID
 exten => s,1,NoOp(Chamada entrante ${trunk} -> ${ivr})
  same => n,Goto(${ivr},s,1)
-; exten => _. captura quando o provedor envia o número DID como destino
-exten => _.,1,NoOp(Chamada entrante ${trunk} DID:\${EXTEN} -> ${ivr})
+; exten => _X. captura quando o provedor envia o número DID como destino
+exten => _X.,1,NoOp(Chamada entrante ${trunk} DID:\${EXTEN} -> ${ivr})
  same => n,Goto(${ivr},s,1)
-include => local-ramais
 `;
 
   await upsertNamedBlock({

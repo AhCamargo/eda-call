@@ -2196,6 +2196,36 @@ export const createRoutes = (io: Server) => {
 
   // ── Central Telefônica (URA Receptiva) ─────────────────────────────────
 
+  // Garante que a linha VoIP tenha um inboundContext único (nunca "default").
+  // Caso não tenha, gera um a partir do contextName do IVR e re-provisiona o peer SIP.
+  const ensureTrunkInboundContext = async (
+    line: any,
+    ivrContextName: string,
+  ): Promise<string> => {
+    if (line.inboundContext && line.inboundContext !== "default") {
+      return line.inboundContext;
+    }
+    const generated = `inbound-${ivrContextName}`;
+    line.inboundContext = generated;
+    await line.save();
+    await upsertSipVoipLine({
+      name: line.name,
+      username: line.username,
+      secret: line.secret,
+      host: line.host,
+      port: line.port,
+      context: line.context,
+      inboundContext: generated,
+      type: line.type,
+      dtmfmode: line.dtmfmode,
+      fromdomain: line.fromdomain,
+      codecs: line.codecs,
+      callLimit: line.callLimit,
+      insecure: line.insecure,
+    });
+    return generated;
+  };
+
   router.get("/inbound-ivr", async (_req: Request, res: Response) => {
     const ivrs = (await InboundIvr.findAll({
       include: [{ model: InboundIvrOption, as: "options" }],
@@ -2276,12 +2306,9 @@ export const createRoutes = (io: Server) => {
 
     if (ivr.voipLineId) {
       const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
-      const trunkCtx = line?.inboundContext || line?.context;
-      if (trunkCtx) {
-        await upsertTrunkInboundRoute({
-          trunkContext: trunkCtx,
-          ivrContext: ivr.contextName,
-        });
+      if (line) {
+        const trunkCtx = await ensureTrunkInboundContext(line, ivr.contextName);
+        await upsertTrunkInboundRoute({ trunkContext: trunkCtx, ivrContext: ivr.contextName });
       }
     }
 
@@ -2353,12 +2380,9 @@ export const createRoutes = (io: Server) => {
 
     if (ivr.voipLineId) {
       const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
-      const trunkCtx = line?.inboundContext || line?.context;
-      if (trunkCtx) {
-        await upsertTrunkInboundRoute({
-          trunkContext: trunkCtx,
-          ivrContext: ivr.contextName,
-        });
+      if (line) {
+        const trunkCtx = await ensureTrunkInboundContext(line, ivr.contextName);
+        await upsertTrunkInboundRoute({ trunkContext: trunkCtx, ivrContext: ivr.contextName });
       }
     }
 
@@ -2371,9 +2395,18 @@ export const createRoutes = (io: Server) => {
 
     if (ivr.voipLineId) {
       const line = (await VoipLine.findByPk(Number(ivr.voipLineId))) as any;
-      const trunkCtx = line?.inboundContext || line?.context;
-      if (trunkCtx) {
-        await removeTrunkInboundRoute({ trunkContext: trunkCtx });
+      if (line?.inboundContext && line.inboundContext !== "default") {
+        await removeTrunkInboundRoute({ trunkContext: line.inboundContext });
+        // Limpa o inboundContext da linha para que possa ser reutilizado
+        line.inboundContext = null;
+        await line.save();
+        await upsertSipVoipLine({
+          name: line.name, username: line.username, secret: line.secret,
+          host: line.host, port: line.port, context: line.context,
+          inboundContext: null, type: line.type, dtmfmode: line.dtmfmode,
+          fromdomain: line.fromdomain, codecs: line.codecs,
+          callLimit: line.callLimit, insecure: line.insecure,
+        });
       }
     }
     await removeInboundIvrDialplan({ contextName: ivr.contextName });
