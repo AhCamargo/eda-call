@@ -4,12 +4,12 @@ RUN apk upgrade --no-cache
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+COPY package.json ./
+RUN npm install
 
 COPY . .
 
-RUN pnpm build
+RUN npm run build
 
 # ── Runtime ──────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine

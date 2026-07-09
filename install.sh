@@ -47,98 +47,6 @@ echo -e "${RESET}"
 echo -e "  Instalador do sistema EDACall — PABX"
 echo ""
 
-# ── Validação de Licença ──────────────────────────────────────────────────────
-header "Ativação da licença"
-
-LICENSE_DIR="/etc/edacall"
-LICENSE_FILE="${LICENSE_DIR}/license.lic"
-
-# Verifica se já existe uma licença instalada
-if [[ -f "${LICENSE_FILE}" ]]; then
-  ok "Licença já instalada em ${LICENSE_FILE}"
-  echo ""
-  read -rp "  Deseja substituí-la por uma nova? (s/N): " REPLACE_LIC
-  REPLACE_LIC="${REPLACE_LIC,,}"
-  [[ "$REPLACE_LIC" != "s" ]] && info "Mantendo licença existente."
-fi
-
-if [[ ! -f "${LICENSE_FILE}" || "${REPLACE_LIC:-n}" == "s" ]]; then
-  echo -e "  Informe o caminho completo para o arquivo de licença ${BOLD}(.lic)${RESET}"
-  echo -e "  fornecido pela EdaCall. Ex: /home/ubuntu/cliente-001_20260523.lic"
-  echo ""
-
-  while true; do
-    read -rp "  Caminho do arquivo .lic: " LIC_INPUT
-    LIC_INPUT="${LIC_INPUT/#\~/$HOME}"  # expande ~
-
-    if [[ -z "$LIC_INPUT" ]]; then
-      warn "Caminho não informado. Instalação cancelada."
-      die "Uma licença válida é obrigatória para instalar o EdaCall."
-    fi
-
-    if [[ ! -f "$LIC_INPUT" ]]; then
-      warn "Arquivo não encontrado: ${LIC_INPUT}"
-      continue
-    fi
-
-    # Valida estrutura mínima do JSON (payload + signature)
-    if ! command -v python3 &>/dev/null; then
-      warn "python3 não encontrado — instalando para validar licença..."
-      apt-get install -y -qq python3 >/dev/null 2>&1
-    fi
-
-    VALID_STRUCTURE=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open('${LIC_INPUT}'))
-    assert 'payload' in d and 'signature' in d
-    assert 'clientId' in d['payload'] and 'expiresAt' in d['payload']
-    exp = d['payload']['expiresAt']
-    if exp:
-        from datetime import datetime, timezone
-        expires = datetime.fromisoformat(exp.replace('Z','+00:00'))
-        now = datetime.now(timezone.utc)
-        assert expires > now, 'EXPIRED'
-    print('OK:' + d['payload']['clientId'] + ':' + d['payload']['clientName'])
-except AssertionError as e:
-    print('EXPIRED' if 'EXPIRED' in str(e) else 'INVALID')
-except Exception as e:
-    print('ERROR:' + str(e))
-" 2>/dev/null)
-
-    case "$VALID_STRUCTURE" in
-      OK:*)
-        CLIENT_ID=$(echo "$VALID_STRUCTURE" | cut -d: -f2)
-        CLIENT_NAME=$(echo "$VALID_STRUCTURE" | cut -d: -f3)
-        ok "Licença válida: ${BOLD}${CLIENT_NAME}${RESET} (${CLIENT_ID})"
-        break
-        ;;
-      EXPIRED)
-        die "Licença expirada. Contate o suporte para renovação."
-        ;;
-      INVALID)
-        warn "Arquivo de licença inválido ou corrompido."
-        warn "Verifique se o arquivo correto foi enviado."
-        continue
-        ;;
-      *)
-        warn "Erro ao processar licença: ${VALID_STRUCTURE}"
-        continue
-        ;;
-    esac
-  done
-
-  # Instala a licença
-  mkdir -p "${LICENSE_DIR}"
-  cp "${LIC_INPUT}" "${LICENSE_FILE}"
-  chmod 600 "${LICENSE_FILE}"
-  ok "Licença instalada em ${LICENSE_FILE}"
-fi
-
-echo ""
-echo -e "  ${BOLD}Licença de instalação verificada com sucesso.${RESET}"
-echo ""
-
 # ── Coleta de informações ─────────────────────────────────────────────────────
 header "Configuração da instalação"
 
@@ -365,7 +273,7 @@ systemctl restart asterisk
 ok "Asterisk iniciado e habilitado no boot"
 
 # ── Instalação do Zabbix Agent ────────────────────────────────────────────────
-header "Instalando Zabbix Agent (monitoramento de licença)"
+header "Instalando Zabbix Agent (monitoramento)"
 
 ZABBIX_CONF_DIR=""
 if command -v zabbix_agent2 &>/dev/null; then
@@ -399,11 +307,6 @@ fi
 if [[ -n "$ZABBIX_CONF_DIR" ]]; then
   echo ""
   read -rp "  IP do seu servidor Zabbix (Enter para configurar depois): " ZABBIX_SERVER_IP
-
-  # Instala o script de status de licença
-  cp scripts/edacall-license-status /usr/local/bin/edacall-license-status
-  chmod +x /usr/local/bin/edacall-license-status
-  ok "Script de status instalado em /usr/local/bin/edacall-license-status"
 
   # Instala UserParameter
   mkdir -p "$ZABBIX_CONF_DIR"
@@ -547,12 +450,10 @@ echo -e "    Reiniciar tudo: ${CYAN}systemctl restart asterisk && systemctl rest
 echo -e "    Status        : ${CYAN}docker compose -f docker-compose.prod.yml ps${RESET}"
 echo ""
 echo -e "  ${BOLD}Arquivo de configuração:${RESET} ${CYAN}${INSTALL_DIR}/.env${RESET}"
-echo -e "  ${BOLD}Licença instalada:${RESET}       ${CYAN}${LICENSE_FILE}${RESET}"
 echo ""
 echo -e "  ${BOLD}Zabbix Agent — próximos passos:${RESET}"
 echo -e "    Template  : importe ${CYAN}zabbix/edacall-template.xml${RESET} no seu Zabbix Server"
 echo -e "    Host      : crie um host para ${BOLD}${SERVER_IP}${RESET} e vincule o template"
-echo -e "    Validar   : ${CYAN}/usr/local/bin/edacall-license-status${RESET}"
 echo ""
 echo -e "${YELLOW}  ⚠  Guarde as senhas geradas — elas estão salvas em .env${RESET}"
 echo ""
