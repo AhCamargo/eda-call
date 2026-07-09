@@ -23,7 +23,7 @@ services:
   # Porta 10051: agentes dos clientes conectam aqui (active checks)
   # IP dinâmico do cliente não é problema — o agente é quem conecta no servidor
   zabbix-server:
-    image: zabbix/zabbix-server-pgsql:7.0-alpine
+    image: zabbix/zabbix-server-pgsql:alpine-7.0-latest
     container_name: monitor_zabbix_server
     depends_on:
       postgres-zabbix:
@@ -51,7 +51,7 @@ services:
 
   # ── Zabbix Web UI ────────────────────────────────────────────────────────────
   zabbix-web:
-    image: zabbix/zabbix-web-nginx-pgsql:7.0-alpine
+    image: zabbix/zabbix-web-nginx-pgsql:alpine-7.0-latest
     container_name: monitor_zabbix_web
     depends_on:
       - zabbix-server
