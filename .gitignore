@@ -1,7 +1,32 @@
-node_modules
-dist
-.next
+# Dependências
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+.vite/
+
+# Env
 .env
+.env.local
+.env.*.local
+
+# Logs
 *.log
-backend/uploads
-asterisk/recordings/*.wav
+logs/
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+
+# Uploads e arquivos gerados em runtime
+backend/uploads/
+
+# Asterisk — gravações e áudios de campanha (binários grandes, gerados em runtime)
+asterisk/recordings/
+asterisk/sounds/campaigns/
+
+# Licença — chave privada RSA (protegida também em license/.gitignore)
+license/keys/private.pem
+*.lic
+

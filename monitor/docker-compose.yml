@@ -1,0 +1,106 @@
+services:
+
+  # ── Banco de dados do Zabbix ────────────────────────────────────────────────
+  postgres-zabbix:
+    image: postgres:16-alpine
+    container_name: monitor_postgres
+    environment:
+      POSTGRES_DB:       ${ZABBIX_DB_NAME:-zabbix}
+      POSTGRES_USER:     ${ZABBIX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD: ${ZABBIX_DB_PASSWORD}
+    volumes:
+      - postgres_zabbix_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ZABBIX_DB_USER:-zabbix}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+    networks:
+      - monitor-net
+
+  # ── Zabbix Server ────────────────────────────────────────────────────────────
+  # Porta 10051: agentes dos clientes conectam aqui (active checks)
+  # IP dinâmico do cliente não é problema — o agente é quem conecta no servidor
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:7.0-alpine
+    container_name: monitor_zabbix_server
+    depends_on:
+      postgres-zabbix:
+        condition: service_healthy
+    environment:
+      DB_SERVER_HOST:        postgres-zabbix
+      POSTGRES_DB:           ${ZABBIX_DB_NAME:-zabbix}
+      POSTGRES_USER:         ${ZABBIX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD:     ${ZABBIX_DB_PASSWORD}
+      ZBX_STARTPOLLERS:      5
+      ZBX_STARTTRAPPERS:     5        # Recebe dados dos agentes ativos
+      ZBX_STARTPINGERS:      1
+      ZBX_CACHESIZE:         64M
+      ZBX_HISTORYCACHESIZE:  32M
+      ZBX_TRENDCACHESIZE:    32M
+      ZBX_VALUECACHESIZE:    32M
+    ports:
+      - "10051:10051"    # Porta que os agentes dos clientes conectam
+    volumes:
+      - zabbix_alertscripts:/usr/lib/zabbix/alertscripts
+      - zabbix_externalscripts:/usr/lib/zabbix/externalscripts
+    restart: unless-stopped
+    networks:
+      - monitor-net
+
+  # ── Zabbix Web UI ────────────────────────────────────────────────────────────
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:7.0-alpine
+    container_name: monitor_zabbix_web
+    depends_on:
+      - zabbix-server
+      - postgres-zabbix
+    environment:
+      ZBX_SERVER_HOST:   zabbix-server
+      DB_SERVER_HOST:    postgres-zabbix
+      POSTGRES_DB:       ${ZABBIX_DB_NAME:-zabbix}
+      POSTGRES_USER:     ${ZABBIX_DB_USER:-zabbix}
+      POSTGRES_PASSWORD: ${ZABBIX_DB_PASSWORD}
+      PHP_TZ:            ${TIMEZONE:-America/Sao_Paulo}
+    ports:
+      - "8080:8080"    # Zabbix Web UI
+    restart: unless-stopped
+    networks:
+      - monitor-net
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: monitor_grafana
+    depends_on:
+      - zabbix-web
+    environment:
+      GF_SECURITY_ADMIN_USER:     ${GRAFANA_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_INSTALL_PLUGINS:         alexanderzobnin-zabbix-app
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: alexanderzobnin-zabbix-datasource
+      GF_SERVER_ROOT_URL:         ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_ANALYTICS_REPORTING_ENABLED: false
+      GF_ANALYTICS_CHECK_FOR_UPDATES: false
+      GF_USERS_ALLOW_SIGN_UP:     false
+      TZ:                         ${TIMEZONE:-America/Sao_Paulo}
+    ports:
+      - "3000:3000"    # Grafana UI
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+    networks:
+      - monitor-net
+
+networks:
+  monitor-net:
+    driver: bridge
+
+volumes:
+  postgres_zabbix_data:
+  zabbix_alertscripts:
+  zabbix_externalscripts:
+  grafana_data:

@@ -2,7 +2,7 @@
 const AsteriskManager = require("asterisk-manager");
 import config from "./config";
 
-const { ami: amiConfig, backendInternalUrl } = config;
+const { ami: amiConfig, backendInternalUrl, internalApiKey } = config;
 
 let amiClient: any = null;
 
@@ -122,6 +122,7 @@ export const originateReverseIvr = ({
     `APP_DIGIT_TIMEOUT=${digitTimeoutSeconds || 5}`,
     `APP_URA_REF=${uraRef}`,
     `URA_CALLBACK_URL=${backendInternalUrl}/internal/ura/log`,
+    `APP_INTERNAL_KEY=${internalApiKey}`,
     ...Object.entries(extraVariables).map(
       ([key, value]) => `${key}=${value == null ? "" : value}`,
     ),

@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# ═══════════════════════════════════════════════════════════════════════════════
+#  EdaCall — Script de status de licença para Zabbix agent
+#  Invocado via UserParameter pelo Zabbix agent
+#  Retorna JSON com status completo da licença
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+#  Instalação:
+#    sudo cp scripts/edacall-license-status /usr/local/bin/
+#    sudo chmod +x /usr/local/bin/edacall-license-status
+#
+#  Uso direto:
+#    /usr/local/bin/edacall-license-status
+#    /usr/local/bin/edacall-license-status --field valid
+#    /usr/local/bin/edacall-license-status --field days_remaining
+#    /usr/local/bin/edacall-license-status --field client_name
+#    /usr/local/bin/edacall-license-status --field expires_at
+#    /usr/local/bin/edacall-license-status --field max_extensions
+# ═══════════════════════════════════════════════════════════════════════════════
+
+set -euo pipefail
+
+EDACALL_API="${EDACALL_API_URL:-http://localhost:5000}"
+FIELD="${2:-}"
+
+# Tenta consultar a API local do EdaCall
+response=$(curl -sf --max-time 5 "${EDACALL_API}/license/status" 2>/dev/null) || {
+  # API indisponível — retorna erro estruturado
+  if [[ "$FIELD" == "--field" && -n "${3:-}" ]]; then
+    case "${3}" in
+      valid)          echo "0" ;;
+      days_remaining) echo "-1" ;;
+      *)              echo "ERROR" ;;
+    esac
+  else
+    echo '{"valid":false,"error":"EdaCall API unavailable","daysRemaining":-1}'
+  fi
+  exit 0
+}
+
+# Extrai campo específico se solicitado (para items individuais do Zabbix)
+if [[ "${1:-}" == "--field" && -n "${2:-}" ]]; then
+  field="$2"
+  case "$field" in
+    valid)
+      echo "$response" | grep -o '"valid":[^,}]*' | cut -d: -f2 | tr -d ' '
+      ;;
+    days_remaining)
+      val=$(echo "$response" | grep -o '"daysRemaining":[^,}]*' | cut -d: -f2 | tr -d ' ')
+      echo "${val:-null}"
+      ;;
+    client_name)
+      echo "$response" | grep -o '"clientName":"[^"]*"' | cut -d'"' -f4
+      ;;
+    client_id)
+      echo "$response" | grep -o '"clientId":"[^"]*"' | cut -d'"' -f4
+      ;;
+    expires_at)
+      echo "$response" | grep -o '"expiresAt":"[^"]*"' | cut -d'"' -f4
+      ;;
+    max_extensions)
+      echo "$response" | grep -o '"maxExtensions":[^,}]*' | cut -d: -f2 | tr -d ' '
+      ;;
+    expired)
+      echo "$response" | grep -o '"expired":[^,}]*' | cut -d: -f2 | tr -d ' '
+      ;;
+    error)
+      val=$(echo "$response" | grep -o '"error":"[^"]*"' | cut -d'"' -f4)
+      echo "${val:-}"
+      ;;
+    *)
+      echo "UNKNOWN_FIELD"
+      ;;
+  esac
+else
+  # Retorna JSON completo
+  echo "$response"
+fi

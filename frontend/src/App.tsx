@@ -12,6 +12,7 @@ import UraReversa from "./views/UraReversa";
 import UraReversaRelatorios from "./views/UraReversaRelatorios";
 import LinhasVoip from "./views/LinhasVoip";
 import Relatorios from "./views/Relatorios";
+import RelatoriosProdutividade from "./views/RelatoriosProdutividade";
 import Usuario from "./views/Usuario";
 import CallCenter from "./views/CallCenter";
 import AgentView from "./views/AgentView";
@@ -221,6 +222,7 @@ function App(): JSX.Element {
               <Route path="/roteamento-entrada" element={<RoteamentoEntrada />} />
               <Route path="/gravacoes" element={<Gravacoes />} />
               <Route path="/relatorios" element={<Relatorios />} />
+              <Route path="/relatorios/produtividade" element={<RelatoriosProdutividade />} />
               <Route path="/usuario" element={<Usuario />} />
               {user?.role === "admin" && (
                 <Route path="/usuarios" element={<Usuarios />} />

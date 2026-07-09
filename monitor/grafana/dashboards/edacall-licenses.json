@@ -1,0 +1,471 @@
+{
+  "__inputs": [],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "11.1.0" },
+    { "type": "datasource", "id": "alexanderzobnin-zabbix-datasource", "name": "Grafana Zabbix Plugin", "version": "4.4.0" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "bargauge", "name": "Bar gauge", "version": "" },
+    { "type": "panel", "id": "alertlist", "name": "Alert list", "version": "" }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Gerenciamento de licenças EdaCall PABX — visão centralizada de todos os clientes",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Total de Clientes",
+      "description": "Número de servidores EdaCall monitorados",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "orientation": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "blue" },
+          "unit": "short",
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.valid" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        }
+      ],
+      "transformations": [
+        { "id": "reduce", "options": { "reducers": ["count"] } }
+      ]
+    },
+
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Licenças Válidas",
+      "description": "Clientes com licença ativa",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "green", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.valid" },
+          "functions": [
+            { "def": { "name": "last" }, "params": [] },
+            { "def": { "name": "sumSeries" }, "params": [] }
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Expirando em 30 dias",
+      "description": "Licenças que vencem nos próximos 30 dias",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "fixed", "fixedColor": "orange" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "triggers",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "trigger": { "filter": "/expira em.*dias/" },
+          "showTriggers": "all triggers",
+          "hideAcknowledged": false,
+          "minSeverity": 2,
+          "count": true
+        }
+      ]
+    },
+
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Expiradas / Inválidas",
+      "description": "Clientes com licença bloqueada",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "triggers",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "trigger": { "filter": "EdaCall: Licença INVÁLIDA" },
+          "showTriggers": "all triggers",
+          "hideAcknowledged": false,
+          "minSeverity": 5,
+          "count": true
+        }
+      ]
+    },
+
+    {
+      "id": 5,
+      "type": "row",
+      "title": "Clientes",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 4 },
+      "targets": []
+    },
+
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Todos os Clientes EdaCall",
+      "description": "Status detalhado de licença por cliente. Atualiza a cada 5 minutos.",
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 5 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Dias Restantes", "desc": false }],
+        "footer": { "show": false }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "left",
+            "displayMode": "auto",
+            "filterable": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Status" },
+            "properties": [
+              { "id": "custom.displayMode", "value": "color-background" },
+              {
+                "id": "mappings",
+                "value": [
+                  { "type": "value", "options": { "1": { "text": "✔ VÁLIDA",   "color": "green", "index": 0 } } },
+                  { "type": "value", "options": { "0": { "text": "✖ INVÁLIDA", "color": "red",   "index": 1 } } }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Dias Restantes" },
+            "properties": [
+              { "id": "unit", "value": "d" },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "red",    "value": null },
+                    { "color": "red",    "value": 0    },
+                    { "color": "orange", "value": 7    },
+                    { "color": "yellow", "value": 30   },
+                    { "color": "green",  "value": 60   }
+                  ]
+                }
+              },
+              { "id": "custom.displayMode", "value": "color-background" }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "status",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.valid" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        },
+        {
+          "refId": "days",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.days_remaining" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        },
+        {
+          "refId": "client",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.client_name" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        },
+        {
+          "refId": "expires",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.expires_at" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        },
+        {
+          "refId": "maxext",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.max_extensions" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        }
+      ],
+      "transformations": [
+        { "id": "merge", "options": {} },
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "host":                            "Servidor",
+              "edacall.license.valid":           "Status",
+              "edacall.license.days_remaining":  "Dias Restantes",
+              "edacall.license.client_name":     "Cliente",
+              "edacall.license.expires_at":      "Expira em",
+              "edacall.license.max_extensions":  "Max Ramais",
+              "Time":                            ""
+            },
+            "excludeByName": { "Time": true }
+          }
+        }
+      ]
+    },
+
+    {
+      "id": 7,
+      "type": "row",
+      "title": "Vencimentos",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "targets": []
+    },
+
+    {
+      "id": 8,
+      "type": "bargauge",
+      "title": "Dias Restantes por Cliente",
+      "description": "Verde ≥60d | Amarelo <30d | Laranja <7d | Vermelho = expirada",
+      "gridPos": { "h": 10, "w": 14, "x": 0, "y": 18 },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "showUnfilled": true,
+        "minVizHeight": 10,
+        "minVizWidth": 0,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "d",
+          "min": 0,
+          "max": 365,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red",    "value": null },
+              { "color": "red",    "value": 0    },
+              { "color": "orange", "value": 7    },
+              { "color": "yellow", "value": 30   },
+              { "color": "green",  "value": 60   }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "itemTags",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "item": { "filter": "edacall.license.days_remaining" },
+          "functions": [{ "def": { "name": "last" }, "params": [] }]
+        }
+      ]
+    },
+
+    {
+      "id": 9,
+      "type": "alertlist",
+      "title": "Alertas Ativos de Licença",
+      "description": "Triggers disparados pelo Zabbix relacionados a licenças EdaCall",
+      "gridPos": { "h": 10, "w": 10, "x": 14, "y": 18 },
+      "options": {
+        "alertInstanceLabelFilter": "",
+        "alertName": "",
+        "dashboardAlerts": false,
+        "groupBy": [],
+        "groupMode": "default",
+        "maxItems": 20,
+        "sortOrder": 1,
+        "stateFilter": {
+          "error": true,
+          "firing": true,
+          "noData": false,
+          "normal": false,
+          "pending": true
+        },
+        "viewMode": "list"
+      },
+      "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+          "queryType": "triggers",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" },
+          "application": { "filter": "" },
+          "trigger": { "filter": "/EdaCall/" },
+          "showTriggers": "all triggers",
+          "hideAcknowledged": false,
+          "minSeverity": 2,
+          "count": false
+        }
+      ]
+    }
+  ],
+
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "tags": ["edacall", "licencas", "pabx"],
+  "templating": {
+    "list": [
+      {
+        "current": {},
+        "datasource": { "type": "alexanderzobnin-zabbix-datasource", "uid": "zabbix-main" },
+        "definition": "",
+        "hide": 0,
+        "includeAll": true,
+        "multi": true,
+        "name": "host",
+        "options": [],
+        "query": {
+          "queryType": "host",
+          "group": { "filter": "EdaCall" },
+          "host": { "filter": "/.*/" }
+        },
+        "refresh": 2,
+        "sort": 1,
+        "label": "Cliente",
+        "type": "query"
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "EdaCall — Gerenciamento de Licenças",
+  "uid": "edacall-licenses-v1",
+  "version": 1
+}

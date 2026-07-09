@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0 --port 5173",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 5173"
+    "preview": "vite preview --host 0.0.0.0 --port 5173",
+    "cy:open": "cypress open",
+    "cy:run": "cypress run",
+    "cy:run:headed": "cypress run --headed"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -35,6 +38,7 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
+      "cypress",
       "esbuild"
     ]
   },
@@ -44,6 +48,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
+    "cypress": "^15.18.0",
     "tailwindcss": "^4.1.12",
     "typescript": "^5.8.3",
     "vite": "^6.3.5"

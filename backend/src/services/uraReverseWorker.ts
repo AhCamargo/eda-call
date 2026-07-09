@@ -300,7 +300,7 @@ export const startUraReverseWorker = (io: Server) => {
 
   runningState.timer = setInterval(() => {
     tick().catch(() => {});
-  }, 1000);
+  }, 5000);
 };
 
 export const handleUraReverseDtmfEvent = async ({

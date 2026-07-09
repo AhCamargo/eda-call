@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { usePbx } from "../context/PbxContext";
+import api from "../api";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,8 @@ import {
   FileText,
   Search,
   Filter,
+  Calendar,
+  RefreshCw,
 } from "lucide-react";
 
 import * as XLSX from "xlsx";
@@ -76,6 +79,17 @@ function dateSuffix() {
   return new Date().toISOString().slice(0, 10);
 }
 
+/* ── Default dates: últimos 7 dias ─────────────────────────────── */
+function defaultDates() {
+  const to = new Date();
+  const from = new Date();
+  from.setDate(from.getDate() - 6);
+  return {
+    from: from.toISOString().slice(0, 10),
+    to: to.toISOString().slice(0, 10),
+  };
+}
+
 /* ── Helpers de data / duração ──────────────────────────────────── */
 const fmtDate = (d) =>
   d
@@ -90,9 +104,7 @@ const fmtDate = (d) =>
 
 const fmtDuration = (secs) => {
   if (!secs) return "—";
-  const m = Math.floor(secs / 60)
-    .toString()
-    .padStart(2, "0");
+  const m = Math.floor(secs / 60).toString().padStart(2, "0");
   const s = (secs % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 };
@@ -120,11 +132,12 @@ function ResultBadge({ result }: { result?: string }) {
 function sheetByExtension(rows) {
   return {
     name: "Chamadas por Ramal",
-    headers: ["Ramal", "Telefone", "Resultado", "Data"],
+    headers: ["Ramal", "Telefone", "Resultado", "Duração", "Data"],
     rows: rows.map((i) => [
       i.Extension?.number || "—",
       i.phoneNumber,
       i.result,
+      i.duration ? fmtDuration(i.duration) : "—",
       i.createdAt ? new Date(i.createdAt).toLocaleString("pt-BR") : "—",
     ]),
   };
@@ -168,87 +181,88 @@ function sheetRecordings(rows) {
 
 /* ── Componente ─────────────────────────────────────────────────── */
 export default function Relatorios() {
-  const {
-    extensions,
-    campaigns,
-    reportCallsByExtension,
-    reportCallsByCampaign,
-    reportUraLogs,
-    reportRecordings,
-  } = usePbx();
+  const { extensions, campaigns, reportUraLogs, reportRecordings } = usePbx();
 
-  /* filtros — por ramal */
+  const { from: defaultFrom, to: defaultTo } = defaultDates();
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo] = useState(defaultTo);
+  const [loading, setLoading] = useState(false);
+
+  const [callsByExt, setCallsByExt] = useState<any[]>([]);
+  const [callsByCamp, setCallsByCamp] = useState<any[]>([]);
+
+  /* filtros */
   const [extSearch, setExtSearch] = useState("");
   const [extFilter, setExtFilter] = useState("all");
-
-  /* filtros — por campanha */
   const [campSearch, setCampSearch] = useState("");
   const [campFilter, setCampFilter] = useState("all");
-
-  /* filtros — ura logs */
   const [uraSearch, setUraSearch] = useState("");
-
-  /* filtros — gravações */
   const [recSearch, setRecSearch] = useState("");
   const [recFilter, setRecFilter] = useState("all");
 
+  const fetchCdr = useCallback(async () => {
+    if (!from || !to) return;
+    setLoading(true);
+    try {
+      const [extRes, campRes] = await Promise.all([
+        api.get(`/reports/calls-by-extension?from=${from}&to=${to}`),
+        api.get(`/reports/calls-by-campaign?from=${from}&to=${to}`),
+      ]);
+      setCallsByExt(extRes.data);
+      setCallsByCamp(campRes.data);
+    } catch {
+      // silencia erro de rede — dados ficam como estavam
+    } finally {
+      setLoading(false);
+    }
+  }, [from, to]);
+
+  useEffect(() => {
+    fetchCdr();
+  }, [fetchCdr]);
+
   /* dados filtrados */
   const filteredExt = useMemo(() => {
-    let list = [...reportCallsByExtension];
-    if (extFilter !== "all")
-      list = list.filter((r) => String(r.extensionId) === extFilter);
+    let list = [...callsByExt];
+    if (extFilter !== "all") list = list.filter((r) => String(r.extensionId) === extFilter);
     if (extSearch.trim()) {
       const q = extSearch.toLowerCase();
       list = list.filter(
-        (r) =>
-          r.phoneNumber?.toLowerCase().includes(q) ||
-          r.Extension?.number?.toLowerCase().includes(q),
+        (r) => r.phoneNumber?.toLowerCase().includes(q) || r.Extension?.number?.toLowerCase().includes(q),
       );
     }
     return list;
-  }, [reportCallsByExtension, extFilter, extSearch]);
+  }, [callsByExt, extFilter, extSearch]);
 
   const filteredCamp = useMemo(() => {
-    let list = [...reportCallsByCampaign];
-    if (campFilter !== "all")
-      list = list.filter((r) => String(r.Campaign?.id) === campFilter);
+    let list = [...callsByCamp];
+    if (campFilter !== "all") list = list.filter((r) => String(r.Campaign?.id) === campFilter);
     if (campSearch.trim()) {
       const q = campSearch.toLowerCase();
       list = list.filter(
-        (r) =>
-          r.phoneNumber?.toLowerCase().includes(q) ||
-          r.Campaign?.name?.toLowerCase().includes(q),
+        (r) => r.phoneNumber?.toLowerCase().includes(q) || r.Campaign?.name?.toLowerCase().includes(q),
       );
     }
     return list;
-  }, [reportCallsByCampaign, campFilter, campSearch]);
+  }, [callsByCamp, campFilter, campSearch]);
 
   const filteredUra = useMemo(() => {
     if (!uraSearch.trim()) return reportUraLogs;
     const q = uraSearch.toLowerCase();
     return reportUraLogs.filter(
-      (r) =>
-        r.phoneNumber?.toLowerCase().includes(q) ||
-        r.selectedOption?.toLowerCase().includes(q),
+      (r) => r.phoneNumber?.toLowerCase().includes(q) || r.selectedOption?.toLowerCase().includes(q),
     );
   }, [reportUraLogs, uraSearch]);
 
   const filteredRec = useMemo(() => {
     let list = [...reportRecordings];
-    if (recFilter !== "all")
-      list = list.filter((r) => String(r.extensionId) === recFilter);
+    if (recFilter !== "all") list = list.filter((r) => String(r.extensionId) === recFilter);
     if (recSearch.trim()) {
       const q = recSearch.toLowerCase();
       list = list.filter((r) => r.filePath?.toLowerCase().includes(q));
     }
     return list;
   }, [reportRecordings, recFilter, recSearch]);
-
-  /* export helpers por aba */
-  const exportTab = (sheet) => ({
-    xlsx: () => downloadXlsx([sheet]),
-    pdf: () => downloadPdf(sheet.name, [sheet]),
-  });
 
   return (
     <div className="space-y-4 text-zinc-100 max-w-6xl">
@@ -258,54 +272,66 @@ export default function Relatorios() {
         <h1 className="text-2xl font-bold tracking-tight">Relatórios</h1>
       </div>
 
+      {/* Filtro de período */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardContent className="pt-4 pb-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Calendar size={14} className="text-zinc-500" />
+            <span className="text-xs text-zinc-400">Período:</span>
+            <input
+              type="date"
+              value={from}
+              max={to}
+              onChange={(e) => setFrom(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <span className="text-zinc-500 text-xs">até</span>
+            <input
+              type="date"
+              value={to}
+              min={from}
+              max={dateSuffix()}
+              onChange={(e) => setTo(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50"
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={fetchCdr}
+              disabled={loading}
+              className="h-7 gap-1.5 text-xs border-zinc-700 text-zinc-300 hover:text-violet-400"
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              {loading ? "Carregando..." : "Atualizar"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Tabs */}
       <Tabs defaultValue="ramal">
-        <TabsList className=" gap-3.5 bg-zinc-800 border border-zinc-700 h-auto p-1">
-          <TabsTrigger
-            value="ramal"
-            className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
-          >
+        <TabsList className="gap-3.5 bg-zinc-800 border border-zinc-700 h-auto p-1">
+          <TabsTrigger value="ramal" className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100">
             <Phone size={13} /> Por Ramal
-            <Badge
-              variant="outline"
-              className="ml-1 text-[10px] border-zinc-600 text-zinc-500"
-            >
-              {reportCallsByExtension.length}
+            <Badge variant="outline" className="ml-1 text-[10px] border-zinc-600 text-zinc-500">
+              {callsByExt.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger
-            value="campanha"
-            className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
-          >
+          <TabsTrigger value="campanha" className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100">
             <Megaphone size={13} /> Por Campanha
-            <Badge
-              variant="outline"
-              className="ml-1 text-[10px] border-zinc-600 text-zinc-500"
-            >
-              {reportCallsByCampaign.length}
+            <Badge variant="outline" className="ml-1 text-[10px] border-zinc-600 text-zinc-500">
+              {callsByCamp.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger
-            value="ura"
-            className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
-          >
+          <TabsTrigger value="ura" className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100">
             <Activity size={13} /> URA Logs
-            <Badge
-              variant="outline"
-              className="ml-1 text-[10px] border-zinc-600 text-zinc-500"
-            >
+            <Badge variant="outline" className="ml-1 text-[10px] border-zinc-600 text-zinc-500">
               {reportUraLogs.length}
             </Badge>
           </TabsTrigger>
-          <TabsTrigger
-            value="gravacoes"
-            className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100"
-          >
+          <TabsTrigger value="gravacoes" className="gap-1.5 text-xs data-[state=active]:bg-zinc-700 data-[state=active]:text-zinc-100">
             <Mic size={13} /> Gravações
-            <Badge
-              variant="outline"
-              className="ml-1 text-[10px] border-zinc-600 text-zinc-500"
-            >
+            <Badge variant="outline" className="ml-1 text-[10px] border-zinc-600 text-zinc-500">
               {reportRecordings.length}
             </Badge>
           </TabsTrigger>
@@ -320,65 +346,45 @@ export default function Relatorios() {
             selectValue={extFilter}
             onSelect={setExtFilter}
             selectPlaceholder="Todos os ramais"
-            selectOptions={extensions.map((e) => ({
-              value: String(e.id),
-              label: `${e.number} — ${e.name}`,
-            }))}
-            onClear={() => {
-              setExtSearch("");
-              setExtFilter("all");
-            }}
+            selectOptions={extensions.map((e) => ({ value: String(e.id), label: `${e.number} — ${e.name}` }))}
+            onClear={() => { setExtSearch(""); setExtFilter("all"); }}
             showClear={extFilter !== "all" || !!extSearch.trim()}
           />
-          <ReportCard
-            title="Chamadas por Ramal"
-            count={filteredExt.length}
-            total={reportCallsByExtension.length}
-            sheet={sheetByExtension(filteredExt)}
-          >
+          <ReportCard title="Chamadas por Ramal" count={filteredExt.length} total={callsByExt.length} sheet={sheetByExtension(filteredExt)}>
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800 hover:bg-transparent">
                   <TableHead className="text-zinc-400">Ramal</TableHead>
                   <TableHead className="text-zinc-400">Número</TableHead>
                   <TableHead className="text-zinc-400">Resultado</TableHead>
+                  <TableHead className="text-zinc-400">Duração</TableHead>
                   <TableHead className="text-zinc-400">Data</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExt.length === 0 && (
-                  <EmptyRow cols={4} total={reportCallsByExtension.length} />
-                )}
-                {filteredExt.slice(0, 100).map((item) => (
-                  <TableRow
-                    key={`ext-${item.id}`}
-                    className="border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-                  >
+                {filteredExt.length === 0 && <EmptyRow cols={5} total={callsByExt.length} loading={loading} />}
+                {filteredExt.slice(0, 200).map((item) => (
+                  <TableRow key={`ext-${item.id}`} className="border-zinc-800 hover:bg-zinc-800/30 transition-colors">
                     <TableCell>
                       {item.Extension ? (
-                        <Badge
-                          variant="outline"
-                          className="text-xs border-zinc-700 text-zinc-400"
-                        >
+                        <Badge variant="outline" className="text-xs border-zinc-700 text-zinc-400">
                           {item.Extension.number}
                         </Badge>
-                      ) : (
-                        <span className="text-zinc-600 text-xs">—</span>
-                      )}
+                      ) : <span className="text-zinc-600 text-xs">—</span>}
                     </TableCell>
-                    <TableCell className="font-mono text-sm text-zinc-300">
-                      {item.phoneNumber}
-                    </TableCell>
-                    <TableCell>
-                      <ResultBadge result={item.result} />
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500">
-                      {fmtDate(item.createdAt)}
-                    </TableCell>
+                    <TableCell className="font-mono text-sm text-zinc-300">{item.phoneNumber}</TableCell>
+                    <TableCell><ResultBadge result={item.result} /></TableCell>
+                    <TableCell className="text-zinc-400 text-sm">{fmtDuration(item.duration)}</TableCell>
+                    <TableCell className="text-xs text-zinc-500">{fmtDate(item.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            {filteredExt.length > 200 && (
+              <p className="text-xs text-zinc-500 text-center py-2">
+                Exibindo 200 de {filteredExt.length} — exporte o XLSX para ver todos
+              </p>
+            )}
           </ReportCard>
         </TabsContent>
 
@@ -391,22 +397,11 @@ export default function Relatorios() {
             selectValue={campFilter}
             onSelect={setCampFilter}
             selectPlaceholder="Todas as campanhas"
-            selectOptions={(campaigns || []).map((c) => ({
-              value: String(c.id),
-              label: c.name,
-            }))}
-            onClear={() => {
-              setCampSearch("");
-              setCampFilter("all");
-            }}
+            selectOptions={(campaigns || []).map((c) => ({ value: String(c.id), label: c.name }))}
+            onClear={() => { setCampSearch(""); setCampFilter("all"); }}
             showClear={campFilter !== "all" || !!campSearch.trim()}
           />
-          <ReportCard
-            title="Chamadas por Campanha"
-            count={filteredCamp.length}
-            total={reportCallsByCampaign.length}
-            sheet={sheetByCampaign(filteredCamp)}
-          >
+          <ReportCard title="Chamadas por Campanha" count={filteredCamp.length} total={callsByCamp.length} sheet={sheetByCampaign(filteredCamp)}>
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800 hover:bg-transparent">
@@ -417,30 +412,22 @@ export default function Relatorios() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredCamp.length === 0 && (
-                  <EmptyRow cols={4} total={reportCallsByCampaign.length} />
-                )}
-                {filteredCamp.slice(0, 100).map((item) => (
-                  <TableRow
-                    key={`camp-${item.id}`}
-                    className="border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <TableCell className="text-zinc-300">
-                      {item.Campaign?.name || "—"}
-                    </TableCell>
-                    <TableCell className="font-mono text-sm text-zinc-300">
-                      {item.phoneNumber}
-                    </TableCell>
-                    <TableCell>
-                      <ResultBadge result={item.result} />
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500">
-                      {fmtDate(item.createdAt)}
-                    </TableCell>
+                {filteredCamp.length === 0 && <EmptyRow cols={4} total={callsByCamp.length} loading={loading} />}
+                {filteredCamp.slice(0, 200).map((item) => (
+                  <TableRow key={`camp-${item.id}`} className="border-zinc-800 hover:bg-zinc-800/30 transition-colors">
+                    <TableCell className="text-zinc-300">{item.Campaign?.name || "—"}</TableCell>
+                    <TableCell className="font-mono text-sm text-zinc-300">{item.phoneNumber}</TableCell>
+                    <TableCell><ResultBadge result={item.result} /></TableCell>
+                    <TableCell className="text-xs text-zinc-500">{fmtDate(item.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
+            {filteredCamp.length > 200 && (
+              <p className="text-xs text-zinc-500 text-center py-2">
+                Exibindo 200 de {filteredCamp.length} — exporte o XLSX para ver todos
+              </p>
+            )}
           </ReportCard>
         </TabsContent>
 
@@ -453,44 +440,24 @@ export default function Relatorios() {
             onClear={() => setUraSearch("")}
             showClear={!!uraSearch.trim()}
           />
-          <ReportCard
-            title="URA Logs"
-            count={filteredUra.length}
-            total={reportUraLogs.length}
-            sheet={sheetUraLogs(filteredUra)}
-          >
+          <ReportCard title="URA Logs" count={filteredUra.length} total={reportUraLogs.length} sheet={sheetUraLogs(filteredUra)}>
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800 hover:bg-transparent">
                   <TableHead className="text-zinc-400">Telefone</TableHead>
-                  <TableHead className="text-zinc-400">
-                    Opção selecionada
-                  </TableHead>
+                  <TableHead className="text-zinc-400">Opção selecionada</TableHead>
                   <TableHead className="text-zinc-400">Resultado</TableHead>
                   <TableHead className="text-zinc-400">Data</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredUra.length === 0 && (
-                  <EmptyRow cols={4} total={reportUraLogs.length} />
-                )}
-                {filteredUra.slice(0, 100).map((item) => (
-                  <TableRow
-                    key={`ura-${item.id}`}
-                    className="border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-                  >
-                    <TableCell className="font-mono text-sm text-zinc-300">
-                      {item.phoneNumber}
-                    </TableCell>
-                    <TableCell className="text-zinc-300">
-                      {item.selectedOption || "—"}
-                    </TableCell>
-                    <TableCell>
-                      <ResultBadge result={item.result} />
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500">
-                      {fmtDate(item.createdAt)}
-                    </TableCell>
+                {filteredUra.length === 0 && <EmptyRow cols={4} total={reportUraLogs.length} />}
+                {filteredUra.slice(0, 200).map((item) => (
+                  <TableRow key={`ura-${item.id}`} className="border-zinc-800 hover:bg-zinc-800/30 transition-colors">
+                    <TableCell className="font-mono text-sm text-zinc-300">{item.phoneNumber}</TableCell>
+                    <TableCell className="text-zinc-300">{item.selectedOption || "—"}</TableCell>
+                    <TableCell><ResultBadge result={item.result} /></TableCell>
+                    <TableCell className="text-xs text-zinc-500">{fmtDate(item.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -507,22 +474,11 @@ export default function Relatorios() {
             selectValue={recFilter}
             onSelect={setRecFilter}
             selectPlaceholder="Todos os ramais"
-            selectOptions={extensions.map((e) => ({
-              value: String(e.id),
-              label: `${e.number} — ${e.name}`,
-            }))}
-            onClear={() => {
-              setRecSearch("");
-              setRecFilter("all");
-            }}
+            selectOptions={extensions.map((e) => ({ value: String(e.id), label: `${e.number} — ${e.name}` }))}
+            onClear={() => { setRecSearch(""); setRecFilter("all"); }}
             showClear={recFilter !== "all" || !!recSearch.trim()}
           />
-          <ReportCard
-            title="Gravações"
-            count={filteredRec.length}
-            total={reportRecordings.length}
-            sheet={sheetRecordings(filteredRec)}
-          >
+          <ReportCard title="Gravações" count={filteredRec.length} total={reportRecordings.length} sheet={sheetRecordings(filteredRec)}>
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800 hover:bg-transparent">
@@ -533,38 +489,21 @@ export default function Relatorios() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRec.length === 0 && (
-                  <EmptyRow cols={4} total={reportRecordings.length} />
-                )}
-                {filteredRec.slice(0, 100).map((item) => (
-                  <TableRow
-                    key={`rec-${item.id}`}
-                    className="border-zinc-800 hover:bg-zinc-800/30 transition-colors"
-                  >
+                {filteredRec.length === 0 && <EmptyRow cols={4} total={reportRecordings.length} />}
+                {filteredRec.slice(0, 200).map((item) => (
+                  <TableRow key={`rec-${item.id}`} className="border-zinc-800 hover:bg-zinc-800/30 transition-colors">
                     <TableCell>
                       {item.Extension ? (
-                        <Badge
-                          variant="outline"
-                          className="text-xs border-zinc-700 text-zinc-400"
-                        >
+                        <Badge variant="outline" className="text-xs border-zinc-700 text-zinc-400">
                           {item.Extension.number}
                         </Badge>
-                      ) : (
-                        <span className="text-zinc-600 text-xs">—</span>
-                      )}
+                      ) : <span className="text-zinc-600 text-xs">—</span>}
                     </TableCell>
-                    <TableCell
-                      className="text-xs font-mono text-zinc-400 truncate max-w-xs"
-                      title={item.filePath}
-                    >
+                    <TableCell className="text-xs font-mono text-zinc-400 truncate max-w-xs" title={item.filePath}>
                       {item.filePath?.split("/").pop() || item.filePath || "—"}
                     </TableCell>
-                    <TableCell className="text-zinc-400 text-sm">
-                      {fmtDuration(item.durationSeconds)}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500">
-                      {fmtDate(item.createdAt)}
-                    </TableCell>
+                    <TableCell className="text-zinc-400 text-sm">{fmtDuration(item.durationSeconds)}</TableCell>
+                    <TableCell className="text-xs text-zinc-500">{fmtDate(item.createdAt)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -579,35 +518,21 @@ export default function Relatorios() {
 /* ── Sub-componentes ────────────────────────────────────────────── */
 
 function FilterBar({
-  search,
-  onSearch,
-  searchPlaceholder = "Buscar...",
-  selectValue,
-  onSelect,
-  selectPlaceholder,
-  selectOptions,
-  onClear,
-  showClear,
+  search, onSearch, searchPlaceholder = "Buscar...",
+  selectValue, onSelect, selectPlaceholder, selectOptions,
+  onClear, showClear,
 }: {
-  search: string;
-  onSearch: (v: string) => void;
-  searchPlaceholder?: string;
-  selectValue?: string;
-  onSelect?: (v: string) => void;
-  selectPlaceholder?: string;
-  selectOptions?: { value: string; label: string }[];
-  onClear: () => void;
-  showClear: boolean;
+  search: string; onSearch: (v: string) => void; searchPlaceholder?: string;
+  selectValue?: string; onSelect?: (v: string) => void;
+  selectPlaceholder?: string; selectOptions?: { value: string; label: string }[];
+  onClear: () => void; showClear: boolean;
 }) {
   return (
     <Card className="bg-zinc-900 border-zinc-800">
       <CardContent className="pt-4 pb-3">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search
-              size={14}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500"
-            />
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
             <input
               type="text"
               value={search}
@@ -624,32 +549,16 @@ function FilterBar({
                   <SelectValue placeholder={selectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent className="bg-zinc-800 border-zinc-700">
-                  <SelectItem
-                    value="all"
-                    className="text-zinc-400 focus:bg-zinc-700"
-                  >
-                    {selectPlaceholder}
-                  </SelectItem>
+                  <SelectItem value="all" className="text-zinc-400 focus:bg-zinc-700">{selectPlaceholder}</SelectItem>
                   {selectOptions.map((opt) => (
-                    <SelectItem
-                      key={opt.value}
-                      value={opt.value}
-                      className="text-zinc-100 focus:bg-zinc-700"
-                    >
-                      {opt.label}
-                    </SelectItem>
+                    <SelectItem key={opt.value} value={opt.value} className="text-zinc-100 focus:bg-zinc-700">{opt.label}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
           )}
           {showClear && (
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-zinc-700 text-zinc-400"
-              onClick={onClear}
-            >
+            <Button variant="outline" size="sm" className="border-zinc-700 text-zinc-400" onClick={onClear}>
               Limpar filtros
             </Button>
           )}
@@ -660,15 +569,9 @@ function FilterBar({
 }
 
 function ReportCard({
-  title,
-  count,
-  total,
-  sheet,
-  children,
+  title, count, total, sheet, children,
 }: {
-  title: string;
-  count: number;
-  total: number;
+  title: string; count: number; total: number;
   sheet: { name: string; headers: string[]; rows: (string | number)[][] };
   children: React.ReactNode;
 }) {
@@ -678,17 +581,11 @@ function ReportCard({
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-zinc-300">
             {count} registro{count !== 1 ? "s" : ""}
-            {count !== total && (
-              <span className="text-zinc-500 font-normal">
-                {" "}
-                (filtrado de {total})
-              </span>
-            )}
+            {count !== total && <span className="text-zinc-500 font-normal"> (filtrado de {total})</span>}
           </CardTitle>
           <div className="flex items-center gap-1.5">
             <Button
-              size="sm"
-              variant="ghost"
+              size="sm" variant="ghost"
               onClick={() => downloadXlsx([sheet])}
               disabled={sheet.rows.length === 0}
               className="h-7 gap-1.5 text-xs text-zinc-500 hover:text-green-400 px-2"
@@ -696,8 +593,7 @@ function ReportCard({
               <FileSpreadsheet size={13} /> XLS
             </Button>
             <Button
-              size="sm"
-              variant="ghost"
+              size="sm" variant="ghost"
               onClick={() => downloadPdf(title, [sheet])}
               disabled={sheet.rows.length === 0}
               className="h-7 gap-1.5 text-xs text-zinc-500 hover:text-red-400 px-2"
@@ -712,13 +608,11 @@ function ReportCard({
   );
 }
 
-function EmptyRow({ cols, total }: { cols: number; total: number }) {
+function EmptyRow({ cols, total, loading = false }: { cols: number; total: number; loading?: boolean }) {
   return (
     <TableRow className="border-zinc-800">
       <TableCell colSpan={cols} className="text-center text-zinc-500 py-12">
-        {total === 0
-          ? "Nenhum registro encontrado."
-          : "Nenhum registro com os filtros aplicados."}
+        {loading ? "Carregando..." : total === 0 ? "Nenhum registro no período." : "Nenhum registro com os filtros aplicados."}
       </TableCell>
     </TableRow>
   );

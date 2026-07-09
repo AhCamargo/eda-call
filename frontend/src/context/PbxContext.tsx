@@ -92,8 +92,8 @@ export const PbxProvider: FC<PbxProviderProps> = ({
       api.get("/reports/summary"),
       api.get("/reports/calls-by-extension"),
       api.get("/reports/calls-by-campaign"),
-      api.get("/reports/ura-logs"),
-      api.get("/reports/recordings"),
+      api.get("/reports/ura-logs?limit=500"),
+      api.get("/reports/recordings?limit=200"),
     ]);
 
     setStatusCounts(dashboardRes.data.statusCounts);
@@ -103,8 +103,8 @@ export const PbxProvider: FC<PbxProviderProps> = ({
     setReports(reportsRes.data);
     setReportCallsByExtension(byExtRes.data);
     setReportCallsByCampaign(byCampaignRes.data);
-    setReportUraLogs(uraRes.data);
-    setReportRecordings(recordingsRes.data);
+    setReportUraLogs(uraRes.data.data ?? uraRes.data);
+    setReportRecordings(recordingsRes.data.data ?? recordingsRes.data);
   };
 
   useEffect(() => {

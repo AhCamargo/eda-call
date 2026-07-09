@@ -153,6 +153,12 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
           iconColor: "#38bdf8",
         },
         {
+          to: "/relatorios/produtividade",
+          label: "Produtividade",
+          icon: TrendingUp,
+          iconColor: "#6c5ce7",
+        },
+        {
           to: "/gravacoes",
           label: "Gravações",
           icon: Mic,
@@ -191,6 +197,12 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         label: t("menu.reports"),
         icon: BarChart2,
         iconColor: "#facc15",
+      },
+      {
+        to: "/relatorios/produtividade",
+        label: "Produtividade",
+        icon: TrendingUp,
+        iconColor: "#6c5ce7",
       },
       {
         to: "/usuario",

@@ -3,6 +3,8 @@ import { exec as execCb } from "child_process";
 import { promisify } from "util";
 import fs from "fs";
 import path from "path";
+import rateLimit from "express-rate-limit";
+import logger from "./logger";
 
 const exec = promisify(execCb);
 import multer from "multer";
@@ -50,6 +52,12 @@ import {
   AsteriskQueueMember,
   InboundRoute,
 } from "./db";
+import {
+  logStatusChange,
+  getDailyReport,
+  getTimeline,
+  getPauseReasonSummary,
+} from "./services/agentStatusLogger";
 
 const { asteriskSoundsDir, asteriskRecordingsDir } = config;
 
@@ -146,8 +154,17 @@ const asyncHandler =
 export const createRoutes = (io: Server) => {
   const router = express.Router();
 
+  // Rate limiter: máx 10 tentativas de login por IP a cada 15 min
+  const loginLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { message: "Muitas tentativas de login. Tente novamente em 15 minutos." },
+  });
+
   router.get("/health", (_, res) => res.json({ ok: true }));
-  router.post("/auth/login", login);
+  router.post("/auth/login", loginLimiter, login);
 
   // Retorna dados do usuário autenticado
   router.get("/auth/me", verifyToken, async (req: Request, res: Response) => {
@@ -343,6 +360,7 @@ export const createRoutes = (io: Server) => {
       agent.status = "paused";
       agent.pauseReason = req.body.reason || "Pausa administrativa";
       await agent.save();
+      await logStatusChange(agent.id, agent.number, agent.name, "paused", agent.pauseReason).catch(() => {});
       io.emit("dashboard:update");
       return res.json({ ok: true });
     },
@@ -400,12 +418,21 @@ export const createRoutes = (io: Server) => {
       agent.status = "online";
       agent.pauseReason = null;
       await agent.save();
+      await logStatusChange(agent.id, agent.number, agent.name, "online").catch(() => {});
       io.emit("dashboard:update");
       return res.json({ ok: true });
     },
   );
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
+    const configuredKey = config.internalApiKey;
+    if (configuredKey) {
+      const receivedKey = req.headers["x-internal-key"];
+      if (receivedKey !== configuredKey) {
+        return res.status(401).json({ message: "Chave interna inválida" });
+      }
+    }
+
     const {
       uraRef = null,
       campaignId = null,
@@ -998,6 +1025,7 @@ export const createRoutes = (io: Server) => {
         extension.pauseReason = null;
       }
       await extension.save();
+      await logStatusChange(extension.id, extension.number, extension.name, status, extension.pauseReason ?? null).catch(() => {});
       io.emit("dashboard:update");
       return res.json(withExtensionSector(extension));
     },
@@ -1020,6 +1048,7 @@ export const createRoutes = (io: Server) => {
     extension.status = "paused";
     extension.pauseReason = reason;
     await extension.save();
+    await logStatusChange(extension.id, extension.number, extension.name, "paused", reason).catch(() => {});
 
     io.emit("dashboard:update");
     return res.json(withExtensionSector(extension));
@@ -1038,6 +1067,26 @@ export const createRoutes = (io: Server) => {
       extension.status = "online";
       extension.pauseReason = null;
       await extension.save();
+      await logStatusChange(extension.id, extension.number, extension.name, "online").catch(() => {});
+
+      io.emit("dashboard:update");
+      return res.json(withExtensionSector(extension));
+    },
+  );
+
+  // ── Treinamento: coloca ramal em modo training ──────────────────────────────
+  router.patch(
+    "/extensions/:id/training",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const extension = (await Extension.findByPk(req.params.id as string)) as any;
+      if (!extension) return res.status(404).json({ message: "Ramal não encontrado" });
+
+      const enable = req.body?.enable !== false; // default: ativar
+      extension.status = enable ? "training" : "online";
+      extension.pauseReason = null;
+      await extension.save();
+      await logStatusChange(extension.id, extension.number, extension.name, extension.status).catch(() => {});
 
       io.emit("dashboard:update");
       return res.json(withExtensionSector(extension));
@@ -1909,64 +1958,100 @@ export const createRoutes = (io: Server) => {
     });
   });
 
-  router.get("/reports/calls", async (_, res: Response) => {
-    const calls = await CallLog.findAll({
+  router.get("/reports/calls", async (req: Request, res: Response) => {
+    const page  = Math.max(1, Number(req.query.page)  || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await CallLog.findAndCountAll({
       include: [
-        { model: Campaign, attributes: ["id", "name"] },
+        { model: Campaign,  attributes: ["id", "name"] },
         { model: Extension, attributes: ["id", "number", "name"] },
-        { model: VoipLine, attributes: ["id", "name", "host", "port"] },
+        { model: VoipLine,  attributes: ["id", "name", "host", "port"] },
       ],
       order: [["createdAt", "DESC"]],
+      limit,
+      offset,
     });
-    res.json(calls);
+    res.json({ total: count, page, limit, data: rows });
   });
 
-  router.get("/reports/calls-by-extension", async (_, res: Response) => {
+  router.get("/reports/calls-by-extension", async (req: Request, res: Response) => {
+    const { from, to, extensionId } = req.query as Record<string, string>;
+    const where: any = {};
+    if (from && to) {
+      where.createdAt = { [Op.between]: [`${from} 00:00:00`, `${to} 23:59:59`] };
+    }
+    if (extensionId) where.extensionId = Number(extensionId);
+
     const calls = await CallLog.findAll({
+      where,
       include: [{ model: Extension, attributes: ["id", "number", "name"] }],
       order: [["createdAt", "DESC"]],
+      limit: 5000,
     });
-
     res.json(calls);
   });
 
-  router.get("/reports/calls-by-campaign", async (_, res: Response) => {
+  router.get("/reports/calls-by-campaign", async (req: Request, res: Response) => {
+    const { from, to, campaignId } = req.query as Record<string, string>;
+    const where: any = {};
+    if (from && to) {
+      where.createdAt = { [Op.between]: [`${from} 00:00:00`, `${to} 23:59:59`] };
+    }
+    if (campaignId) where.campaignId = Number(campaignId);
+
     const calls = await CallLog.findAll({
+      where,
       include: [{ model: Campaign, attributes: ["id", "name"] }],
       order: [["createdAt", "DESC"]],
+      limit: 5000,
     });
-
     res.json(calls);
   });
 
-  router.get("/reports/ura-logs", async (_, res: Response) => {
-    const logs = await UraLog.findAll({
+  router.get("/reports/ura-logs", async (req: Request, res: Response) => {
+    const page  = Math.max(1, Number(req.query.page)  || 1);
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = await UraLog.findAndCountAll({
       include: [
-        { model: Campaign, attributes: ["id", "name"] },
+        { model: Campaign,  attributes: ["id", "name"] },
         { model: Extension, attributes: ["id", "number", "name"] },
       ],
       order: [["createdAt", "DESC"]],
+      limit,
+      offset,
     });
-
-    res.json(logs);
+    res.json({ total: count, page, limit, data: rows });
   });
 
-  router.get("/reports/recordings", async (_, res: Response) => {
-    const recordings = (await CallRecording.findAll({
+  router.get("/reports/recordings", async (req: Request, res: Response) => {
+    const page  = Math.max(1, Number(req.query.page)  || 1);
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const offset = (page - 1) * limit;
+
+    const { count, rows } = (await CallRecording.findAndCountAll({
       include: [
-        { model: Campaign, attributes: ["id", "name"] },
+        { model: Campaign,  attributes: ["id", "name"] },
         { model: Extension, attributes: ["id", "number", "name"] },
-        { model: CallLog, attributes: ["id", "phoneNumber", "result"] },
+        { model: CallLog,   attributes: ["id", "phoneNumber", "result"] },
       ],
       order: [["createdAt", "DESC"]],
-    })) as any[];
+      limit,
+      offset,
+    })) as any;
 
-    res.json(
-      recordings.map((recording) => ({
+    res.json({
+      total: count,
+      page,
+      limit,
+      data: (rows as any[]).map((recording: any) => ({
         ...recording.toJSON(),
         webPath: toRecordingWebPath(recording.filePath),
       })),
-    );
+    });
   });
 
   router.get("/reports/ura-reverse", async (_, res: Response) => {
@@ -2644,19 +2729,134 @@ export const createRoutes = (io: Server) => {
     return res.json({ total: routes.length });
   });
 
-  // ── Error middleware (captura erros de todos os handlers async) ───────────
+  // ── Error middleware (captura erros de todos os handlers async via express-async-errors) ──
   router.use(
     (
       err: any,
-      _req: Request,
+      req: Request,
       res: Response,
       _next: express.NextFunction,
     ) => {
-      console.error("[API Error]", err?.message || err);
       const status = err?.status || err?.statusCode || 500;
+      logger.error(`[API Error] ${req.method} ${req.path} — ${err?.message || err}`, {
+        status,
+        stack: err?.stack,
+      });
       return res.status(status).json({
         message: err?.message || "Erro interno do servidor",
       });
+    },
+  );
+
+  // ── Relatórios de produtividade dos agentes ─────────────────────────────────
+
+  /**
+   * GET /api/agent-reports
+   * Resumo diário por agente: tempo em cada status num período.
+   *
+   * Query params:
+   *   from        YYYY-MM-DD  (obrigatório)
+   *   to          YYYY-MM-DD  (obrigatório)
+   *   extensionId number      (opcional — filtra um agente)
+   *
+   * Resposta: array de { extensionId, extensionNumber, extensionName, date,
+   *   onlineSeconds, pausedSeconds, inCallSeconds, inCampaignSeconds,
+   *   trainingSeconds, offlineSeconds, totalTrackedSeconds }
+   */
+  router.get(
+    "/agent-reports",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const { from, to, extensionId } = req.query as Record<string, string>;
+
+      if (!from || !to) {
+        return res.status(400).json({ message: "Parâmetros 'from' e 'to' são obrigatórios (YYYY-MM-DD)" });
+      }
+
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(from) || !dateRegex.test(to)) {
+        return res.status(400).json({ message: "Formato de data inválido. Use YYYY-MM-DD" });
+      }
+
+      if (from > to) {
+        return res.status(400).json({ message: "'from' deve ser anterior a 'to'" });
+      }
+
+      try {
+        const report = await getDailyReport({
+          from,
+          to,
+          extensionId: extensionId ? Number(extensionId) : undefined,
+        });
+        return res.json(report);
+      } catch (err: any) {
+        logger.error("[agent-reports]", { message: err.message });
+        return res.status(500).json({ message: "Erro ao gerar relatório" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/agent-reports/timeline
+   * Timeline detalhada de um agente em um dia específico.
+   *
+   * Query params:
+   *   extensionId  number      (obrigatório)
+   *   date         YYYY-MM-DD  (obrigatório)
+   */
+  router.get(
+    "/agent-reports/timeline",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const { extensionId, date } = req.query as Record<string, string>;
+
+      if (!extensionId || !date) {
+        return res.status(400).json({ message: "Parâmetros 'extensionId' e 'date' são obrigatórios" });
+      }
+
+      try {
+        const timeline = await getTimeline({
+          extensionId: Number(extensionId),
+          date,
+        });
+        return res.json(timeline);
+      } catch (err: any) {
+        logger.error("[agent-reports/timeline]", { message: err.message });
+        return res.status(500).json({ message: "Erro ao gerar timeline" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/agent-reports/pauses
+   * Resumo de pausas agrupado por motivo num período.
+   *
+   * Query params:
+   *   from        YYYY-MM-DD  (obrigatório)
+   *   to          YYYY-MM-DD  (obrigatório)
+   *   extensionId number      (opcional)
+   */
+  router.get(
+    "/agent-reports/pauses",
+    verifyToken,
+    async (req: Request, res: Response) => {
+      const { from, to, extensionId } = req.query as Record<string, string>;
+
+      if (!from || !to) {
+        return res.status(400).json({ message: "Parâmetros 'from' e 'to' são obrigatórios" });
+      }
+
+      try {
+        const summary = await getPauseReasonSummary({
+          from,
+          to,
+          extensionId: extensionId ? Number(extensionId) : undefined,
+        });
+        return res.json(summary);
+      } catch (err: any) {
+        logger.error("[agent-reports/pauses]", { message: err.message });
+        return res.status(500).json({ message: "Erro ao gerar relatório de pausas" });
+      }
     },
   );
 

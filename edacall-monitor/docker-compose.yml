@@ -1,0 +1,127 @@
+# ==============================================================
+# Stack de monitoramento EDACall
+# Zabbix 7.0 LTS + PostgreSQL 16 + Grafana (com plugin Zabbix)
+# --------------------------------------------------------------
+# Subir:    docker compose up -d
+# Logs:     docker compose logs -f zabbix-server
+# Parar:    docker compose down
+# Atualizar: docker compose pull && docker compose up -d
+# ==============================================================
+
+services:
+  # ----- Banco de dados do Zabbix (PostgreSQL) -----
+  postgres-server:
+    image: postgres:16-alpine
+    container_name: zabbix-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Performance básica para Zabbix
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - zabbix-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ----- Servidor Zabbix (cérebro do monitoramento) -----
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:ubuntu-7.0-latest
+    container_name: zabbix-server
+    restart: unless-stopped
+    depends_on:
+      postgres-server:
+        condition: service_healthy
+    environment:
+      DB_SERVER_HOST: postgres-server
+      DB_SERVER_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      ZBX_CACHESIZE: 256M
+      ZBX_STARTPOLLERS: 10
+      ZBX_STARTPINGERS: 5
+      ZBX_HOUSEKEEPINGFREQUENCY: 1
+    ports:
+      # Porta onde os Zabbix Agents nos clientes se conectam
+      - "10051:10051"
+    networks:
+      - zabbix-net
+
+  # ----- Frontend web do Zabbix (a interface) -----
+  zabbix-web:
+    image: zabbix/zabbix-web-nginx-pgsql:ubuntu-7.0-latest
+    container_name: zabbix-web
+    restart: unless-stopped
+    depends_on:
+      postgres-server:
+        condition: service_healthy
+      zabbix-server:
+        condition: service_started
+    environment:
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_SERVER_PORT: 10051
+      DB_SERVER_HOST: postgres-server
+      DB_SERVER_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PHP_TZ: America/Sao_Paulo
+    ports:
+      # Interface web do Zabbix em http://<ip-do-servidor>:8080
+      - "8080:8080"
+    networks:
+      - zabbix-net
+
+  # ----- Agente local (monitora o próprio servidor de monitoramento) -----
+  zabbix-agent:
+    image: zabbix/zabbix-agent2:ubuntu-7.0-latest
+    container_name: zabbix-agent
+    restart: unless-stopped
+    depends_on:
+      - zabbix-server
+    environment:
+      ZBX_HOSTNAME: "EDACall-Monitor"
+      ZBX_SERVER_HOST: zabbix-server
+      ZBX_PASSIVE_ALLOW: "true"
+      ZBX_PASSIVESERVERS: "zabbix-server"
+      ZBX_ACTIVE_ALLOW: "true"
+      ZBX_SERVER_ACTIVE: "zabbix-server"
+    networks:
+      - zabbix-net
+
+  # ----- Grafana com plugin Zabbix pré-instalado -----
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_INSTALL_PLUGINS: alexanderzobnin-zabbix-app
+      # Permite que o plugin Zabbix (não-assinado pelo Grafana Labs) carregue
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: alexanderzobnin-zabbix-datasource
+    ports:
+      # Interface do Grafana em http://<ip-do-servidor>:3000
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    networks:
+      - zabbix-net
+
+volumes:
+  postgres-data:
+    name: edacall-zabbix-postgres-data
+  grafana-data:
+    name: edacall-grafana-data
+
+networks:
+  zabbix-net:
+    name: edacall-monitor-net
+    driver: bridge

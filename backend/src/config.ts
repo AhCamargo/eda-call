@@ -1,9 +1,19 @@
 import "dotenv/config";
 
+const requireEnv = (name: string): string => {
+  const value = process.env[name];
+  if (!value) {
+    console.error(`[FATAL] ${name} não configurada. Defina a variável de ambiente antes de iniciar.`);
+    process.exit(1);
+  }
+  return value;
+};
+
 const config = {
   port: Number(process.env.PORT || 5000),
   databaseUrl: process.env.DATABASE_URL,
-  jwtSecret: process.env.JWT_SECRET || "supersecret",
+  jwtSecret: requireEnv("JWT_SECRET"),
+  internalApiKey: process.env.INTERNAL_API_KEY || "",
   backendInternalUrl: process.env.BACKEND_INTERNAL_URL || "http://backend:5000",
   asteriskRecordingsDir:
     process.env.ASTERISK_RECORDINGS_DIR || "/asterisk-recordings",
@@ -32,8 +42,8 @@ const config = {
   ami: {
     host: process.env.AMI_HOST || "asterisk",
     port: Number(process.env.AMI_PORT || 5038),
-    username: process.env.AMI_USERNAME || "admin",
-    password: process.env.AMI_PASSWORD || "admin",
+    username: requireEnv("AMI_USERNAME"),
+    password: requireEnv("AMI_PASSWORD"),
   },
 };
 

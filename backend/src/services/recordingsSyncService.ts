@@ -2,11 +2,15 @@ import fs from "fs/promises";
 import path from "path";
 import config from "../config";
 import { CallRecording, Extension } from "../db";
+import logger from "../logger";
 
 const { asteriskRecordingsDir } = config;
 
 const POLL_INTERVAL_MS = 10000;
 let intervalId: ReturnType<typeof setInterval> | null = null;
+
+// Set em memória carregado uma vez no boot — elimina full table scan a cada tick
+let knownFilePaths: Set<string> | null = null;
 
 const isWavFile = (name: string) => name.toLowerCase().endsWith(".wav");
 
@@ -46,21 +50,21 @@ const parseRecordingFilename = (filePath: string) => {
   };
 };
 
-const syncRecordingsFromDisk = async () => {
-  const wavFiles = await collectWavFiles(asteriskRecordingsDir);
-  if (!wavFiles.length) {
-    return;
-  }
-
+const initKnownFilePaths = async (): Promise<Set<string>> => {
   const existing = await CallRecording.findAll({
     attributes: ["filePath"],
   }) as any[];
-  const existingSet = new Set(existing.map((item) => item.filePath));
+  return new Set(existing.map((item) => item.filePath));
+};
+
+const syncRecordingsFromDisk = async () => {
+  if (!knownFilePaths) return;
+
+  const wavFiles = await collectWavFiles(asteriskRecordingsDir);
+  if (!wavFiles.length) return;
 
   for (const filePath of wavFiles) {
-    if (existingSet.has(filePath)) {
-      continue;
-    }
+    if (knownFilePaths.has(filePath)) continue;
 
     let stat;
     try {
@@ -78,30 +82,42 @@ const syncRecordingsFromDisk = async () => {
       if (ext) extensionId = ext.id;
     }
 
-    await CallRecording.create({
-      filePath,
-      durationSeconds: 0,
-      callUniqueId: uniqueId,
-      extensionId,
-      createdAt: stat.birthtime || new Date(),
-      updatedAt: new Date(),
-    });
+    try {
+      await CallRecording.create({
+        filePath,
+        durationSeconds: 0,
+        callUniqueId: uniqueId,
+        extensionId,
+        createdAt: stat.birthtime || new Date(),
+        updatedAt: new Date(),
+      });
+      knownFilePaths.add(filePath);
+    } catch {
+      // Inserção falhou (ex: unique constraint) — não adicionar ao Set, será retentado
+    }
   }
 };
 
 export const startRecordingsSyncService = () => {
-  if (intervalId) {
-    return;
-  }
+  if (intervalId) return;
 
   const runSync = async () => {
     try {
       await syncRecordingsFromDisk();
     } catch (error: any) {
-      console.error("Erro ao sincronizar gravações:", error.message);
+      logger.error("Erro ao sincronizar gravações:", { message: error.message });
     }
   };
 
-  runSync();
-  intervalId = setInterval(runSync, POLL_INTERVAL_MS);
+  // Carrega o Set uma única vez antes de iniciar o polling
+  initKnownFilePaths()
+    .then((set) => {
+      knownFilePaths = set;
+      logger.info(`[RecordingsSync] ${set.size} gravações conhecidas carregadas do banco.`);
+      runSync();
+      intervalId = setInterval(runSync, POLL_INTERVAL_MS);
+    })
+    .catch((error: any) => {
+      logger.error("Erro ao inicializar RecordingsSyncService:", { message: error.message });
+    });
 };

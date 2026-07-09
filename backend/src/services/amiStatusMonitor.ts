@@ -1,6 +1,8 @@
 import { Server } from "socket.io";
 import { getAmiClient, runCommand } from "../ami";
 import { Extension, CallLog, VoipLine } from "../db";
+import { logStatusChange } from "./agentStatusLogger";
+import logger from "../logger";
 
 let started = false;
 let extensionsCache: any[] = [];
@@ -221,6 +223,7 @@ const syncStatusesFromAsterisk = async (io: Server) => {
     if (extension.status !== nextStatus) {
       extension.status = nextStatus;
       await extension.save();
+      await logStatusChange(extension.id, extension.number, extension.name ?? extension.number, nextStatus).catch(() => {});
       changed = true;
     }
   }
@@ -240,7 +243,7 @@ const startAsteriskStatusPolling = (io: Server) => {
     try {
       await syncStatusesFromAsterisk(io);
     } catch (error: any) {
-      console.error("Erro no polling de status do Asterisk:", error.message);
+      logger.error("Erro no polling de status do Asterisk:", { message: error.message });
     }
   };
 
@@ -284,6 +287,7 @@ const updateStatusForChannels = async (channels: string[], nextStatus: string, i
 
     extension.status = nextStatus;
     await extension.save();
+    await logStatusChange(extension.id, extension.number, extension.name ?? extension.number, nextStatus).catch(() => {});
   }
 
   cacheAt = 0;
@@ -408,7 +412,7 @@ export const startAmiStatusMonitor = (io: Server) => {
         await updateStatusForChannels(channels, "online", io);
       }
     } catch (error: any) {
-      console.error("Erro ao processar evento AMI:", error.message);
+      logger.error("Erro ao processar evento AMI:", { message: error.message });
     }
   });
 

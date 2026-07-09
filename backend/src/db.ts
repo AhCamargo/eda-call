@@ -33,11 +33,35 @@ export const Extension = sequelize.define("Extension", {
       "ringing",
       "in_call",
       "in_campaign",
+      "training",
     ),
     allowNull: false,
     defaultValue: "offline",
   },
   voipLineId: { type: DataTypes.INTEGER, allowNull: true },
+});
+
+// ── Histórico de status dos agentes (para relatórios de produtividade) ────────
+// Cada linha representa um período em que o agente ficou num determinado status.
+// Quando o status muda: endedAt e durationSeconds são preenchidos na linha atual,
+// e uma nova linha é aberta com o novo status.
+export const AgentStatusLog = sequelize.define("AgentStatusLog", {
+  // Denormalizados para facilitar queries de relatório sem JOIN
+  extensionNumber: { type: DataTypes.STRING, allowNull: false },
+  extensionName:   { type: DataTypes.STRING, allowNull: false },
+
+  status: {
+    type: DataTypes.ENUM(
+      "online", "offline", "paused", "ringing",
+      "in_call", "in_campaign", "training",
+    ),
+    allowNull: false,
+  },
+  pauseReason: { type: DataTypes.STRING, allowNull: true },
+
+  startedAt:       { type: DataTypes.DATE, allowNull: false },
+  endedAt:         { type: DataTypes.DATE, allowNull: true },  // null = ainda ativo
+  durationSeconds: { type: DataTypes.INTEGER, allowNull: true }, // null até fechar
 });
 
 export const VoipLine = sequelize.define("VoipLine", {
@@ -422,6 +446,10 @@ export const InboundRoute = sequelize.define("InboundRoute", {
   enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 });
 
+// AgentStatusLog belongs to Extension
+Extension.hasMany(AgentStatusLog, { foreignKey: "extensionId", onDelete: "CASCADE" });
+AgentStatusLog.belongsTo(Extension, { foreignKey: "extensionId" });
+
 export const syncDatabase = async () => {
   await sequelize.authenticate();
   await sequelize
@@ -432,6 +460,11 @@ export const syncDatabase = async () => {
   await sequelize
     .query(
       "ALTER TYPE \"enum_Extensions_status\" ADD VALUE IF NOT EXISTS 'ringing'",
+    )
+    .catch(() => {});
+  await sequelize
+    .query(
+      "ALTER TYPE \"enum_Extensions_status\" ADD VALUE IF NOT EXISTS 'training'",
     )
     .catch(() => {});
   await sequelize
@@ -726,6 +759,34 @@ export const syncDatabase = async () => {
       )`,
     )
     .catch(() => {});
+  // ── AgentStatusLogs — histórico de status por agente ──────────────────────
+  await sequelize
+    .query(
+      `CREATE TABLE IF NOT EXISTS "AgentStatusLogs" (
+        "id" SERIAL,
+        "extensionNumber" VARCHAR(255) NOT NULL,
+        "extensionName"   VARCHAR(255) NOT NULL,
+        "status"          VARCHAR(50)  NOT NULL,
+        "pauseReason"     VARCHAR(255) DEFAULT NULL,
+        "startedAt"       TIMESTAMP WITH TIME ZONE NOT NULL,
+        "endedAt"         TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+        "durationSeconds" INTEGER DEFAULT NULL,
+        "createdAt"       TIMESTAMP WITH TIME ZONE NOT NULL,
+        "updatedAt"       TIMESTAMP WITH TIME ZONE NOT NULL,
+        "extensionId"     INTEGER REFERENCES "Extensions" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        PRIMARY KEY ("id")
+      )`,
+    )
+    .catch(() => {});
+  await sequelize
+    .query(`CREATE INDEX IF NOT EXISTS "idx_agent_status_logs_extension_started"
+      ON "AgentStatusLogs" ("extensionId", "startedAt")`)
+    .catch(() => {});
+  await sequelize
+    .query(`CREATE INDEX IF NOT EXISTS "idx_agent_status_logs_open"
+      ON "AgentStatusLogs" ("extensionId", "endedAt") WHERE "endedAt" IS NULL`)
+    .catch(() => {});
+
   await sequelize.sync();
 
   // Reset contatos travados em 'calling' após restart inesperado do backend
