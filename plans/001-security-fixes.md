@@ -1,8 +1,15 @@
 # Plan 001 — Security Fixes (Bundle #1 + #2 + #3)
 
-**Status:** DONE  
+**Status:** DONE (Fix 2 reverted at owner's request — see note below)  
 **Effort:** S  
 **Risk:** LOW  
+
+> **Nota (2026-07-10):** Fix 2 (`/internal/ura/log` recusar requisição quando
+> `INTERNAL_API_KEY` não está configurada) foi aplicado e depois revertido a
+> pedido do dono do projeto — a chave não está configurada em produção hoje
+> e o endpoint precisa continuar funcionando. O endpoint segue igual a antes:
+> sem `INTERNAL_API_KEY` setada, aceita requisições sem autenticação. Fixes 1
+> (`requireSupervisor`) e 3 (`randomBytes`) permanecem aplicados.
 
 ## Why this matters
 

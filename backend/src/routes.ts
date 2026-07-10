@@ -438,15 +438,11 @@ export const createRoutes = (io: Server) => {
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
     const configuredKey = config.internalApiKey;
-    if (!configuredKey) {
-      logger.warn(
-        "[internal/ura/log] INTERNAL_API_KEY não configurada — requisição recusada",
-      );
-      return res.status(503).json({ message: "Endpoint interno não configurado" });
-    }
-    const receivedKey = req.headers["x-internal-key"];
-    if (receivedKey !== configuredKey) {
-      return res.status(401).json({ message: "Chave interna inválida" });
+    if (configuredKey) {
+      const receivedKey = req.headers["x-internal-key"];
+      if (receivedKey !== configuredKey) {
+        return res.status(401).json({ message: "Chave interna inválida" });
+      }
     }
 
     const {

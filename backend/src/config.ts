@@ -47,10 +47,4 @@ const config = {
   },
 };
 
-if (!process.env.INTERNAL_API_KEY) {
-  console.warn(
-    "[CONFIG] INTERNAL_API_KEY não definida. O endpoint /internal/ura/log ficará indisponível até ser configurado.",
-  );
-}
-
 export default config;
