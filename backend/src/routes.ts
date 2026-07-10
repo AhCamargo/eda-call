@@ -1,6 +1,7 @@
 import express, { Request, Response } from "express";
 import { exec as execCb } from "child_process";
 import { promisify } from "util";
+import { randomBytes } from "crypto";
 import fs from "fs";
 import path from "path";
 import rateLimit from "express-rate-limit";
@@ -200,6 +201,12 @@ export const createRoutes = (io: Server) => {
     return next();
   };
 
+  const requireSupervisor = (req: Request, res: Response, next: any) => {
+    if (!["admin", "supervisor"].includes(req.user?.role ?? ""))
+      return res.status(403).json({ message: "Acesso negado" });
+    return next();
+  };
+
   // ── CRUD de Usuários (admin only) ────────────────────────────────
   router.get(
     "/users",
@@ -332,6 +339,7 @@ export const createRoutes = (io: Server) => {
   router.get(
     "/supervisor/agents",
     verifyToken,
+    requireSupervisor,
     async (req: Request, res: Response) => {
       const agents = (await Extension.findAll({
         include: [{ model: VoipLine, as: "VoipLine", attributes: ["name"] }],
@@ -354,6 +362,7 @@ export const createRoutes = (io: Server) => {
   router.post(
     "/supervisor/agents/:id/force-pause",
     verifyToken,
+    requireSupervisor,
     async (req: Request, res: Response) => {
       const agent = (await Extension.findByPk(req.params.id as string)) as any;
       if (!agent)
@@ -370,6 +379,7 @@ export const createRoutes = (io: Server) => {
   router.post(
     "/supervisor/agents/:id/spy",
     verifyToken,
+    requireSupervisor,
     async (req: Request, res: Response) => {
       const agent = (await Extension.findByPk(req.params.id as string)) as any;
       if (!agent) return res.status(404).json({ message: "Ramal não encontrado" });
@@ -412,6 +422,7 @@ export const createRoutes = (io: Server) => {
   router.post(
     "/supervisor/agents/:id/resume",
     verifyToken,
+    requireSupervisor,
     async (req: Request, res: Response) => {
       const agent = (await Extension.findByPk(req.params.id as string)) as any;
       if (!agent)
@@ -427,11 +438,15 @@ export const createRoutes = (io: Server) => {
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
     const configuredKey = config.internalApiKey;
-    if (configuredKey) {
-      const receivedKey = req.headers["x-internal-key"];
-      if (receivedKey !== configuredKey) {
-        return res.status(401).json({ message: "Chave interna inválida" });
-      }
+    if (!configuredKey) {
+      logger.warn(
+        "[internal/ura/log] INTERNAL_API_KEY não configurada — requisição recusada",
+      );
+      return res.status(503).json({ message: "Endpoint interno não configurado" });
+    }
+    const receivedKey = req.headers["x-internal-key"];
+    if (receivedKey !== configuredKey) {
+      return res.status(401).json({ message: "Chave interna inválida" });
     }
 
     const {
@@ -934,14 +949,11 @@ export const createRoutes = (io: Server) => {
   });
 
   // Função utilitária para gerar senha aleatória segura
-  function generateRandomPassword(length = 10) {
+  function generateRandomPassword(length = 12) {
     const chars =
       "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%&*";
-    let password = "";
-    for (let i = 0; i < length; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return password;
+    const bytes = randomBytes(length);
+    return Array.from(bytes, (b) => chars[b % chars.length]).join("");
   }
 
   router.post("/extensions", async (req: Request, res: Response) => {
@@ -1765,7 +1777,7 @@ export const createRoutes = (io: Server) => {
       return res.status(400).json({ message: "phoneNumber é obrigatório" });
     }
 
-    const uraRef = `${Date.now()}-${Math.floor(Math.random() * 100000)}`;
+    const uraRef = `${Date.now()}-${randomBytes(6).toString("hex")}`;
 
     const defaultTarget = String(targetExtension || "2001").trim() || "2001";
     const target1 =
