@@ -6,11 +6,15 @@ const { originateReverseIvr } = vi.hoisted(() => ({
 }));
 vi.mock("../ami", () => ({ originateReverseIvr }));
 
-const { UraReverseCampaign, UraReverseContact, UraReverseOption, VoipLine } = vi.hoisted(() => ({
+const { UraReverseCampaign, UraReverseContact, UraReverseOption, VoipLine, sequelize } = vi.hoisted(() => ({
   UraReverseCampaign: { findByPk: vi.fn(), findAll: vi.fn() },
   UraReverseContact: { findByPk: vi.fn(), findAll: vi.fn(), count: vi.fn() },
   UraReverseOption: { findAll: vi.fn() },
   VoipLine: { findByPk: vi.fn() },
+  sequelize: {
+    fn: (name: string, col: unknown) => ({ fn: name, col }),
+    col: (name: string) => ({ col: name }),
+  },
 }));
 
 vi.mock("../db", () => ({
@@ -18,6 +22,7 @@ vi.mock("../db", () => ({
   UraReverseContact,
   UraReverseOption,
   VoipLine,
+  sequelize,
 }));
 
 import {
@@ -64,10 +69,9 @@ describe("uraReverseWorker", () => {
 
   it("emits campaignId and stats grouped by contact status", async () => {
     UraReverseContact.findAll.mockResolvedValue([
-      { status: "pending" },
-      { status: "pending" },
-      { status: "answered" },
-      { status: "not_a_tracked_status" },
+      { status: "pending", count: "2" },
+      { status: "answered", count: "1" },
+      { status: "not_a_tracked_status", count: "5" },
     ]);
 
     await emitCampaignStats(42);
@@ -78,6 +82,9 @@ describe("uraReverseWorker", () => {
         campaignId: 42,
         stats: expect.objectContaining({ pending: 2, answered: 1 }),
       }),
+    );
+    expect(UraReverseContact.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ group: ["status"] }),
     );
   });
 

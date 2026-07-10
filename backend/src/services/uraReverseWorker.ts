@@ -1,6 +1,7 @@
 import { Op } from "sequelize";
 import { Server } from "socket.io";
 import {
+  sequelize,
   UraReverseCampaign,
   UraReverseContact,
   UraReverseOption,
@@ -25,10 +26,12 @@ const isPhoneValid = (phone: any) => /^\d{10,14}$/.test(String(phone || "").trim
 export const emitCampaignStats = async (campaignId: number) => {
   if (!runningState.io) return;
 
-  const contacts = await UraReverseContact.findAll({
+  const rows = (await UraReverseContact.findAll({
     where: { campaignId },
-    attributes: ["status"],
-  }) as any[];
+    attributes: ["status", [sequelize.fn("COUNT", sequelize.col("id")), "count"]],
+    group: ["status"],
+    raw: true,
+  })) as unknown as Array<{ status: string; count: string }>;
 
   const stats: Record<string, number> = {
     calling: 0,
@@ -41,10 +44,10 @@ export const emitCampaignStats = async (campaignId: number) => {
     finished: 0,
   };
 
-  for (const contact of contacts) {
-    const key = contact.status;
-    if (stats[key] === undefined) continue;
-    stats[key] += 1;
+  for (const row of rows) {
+    if (row.status in stats) {
+      stats[row.status] = Number(row.count);
+    }
   }
 
   runningState.io.emit("ura-reverse:stats", { campaignId, stats });
