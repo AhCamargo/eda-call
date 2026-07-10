@@ -75,9 +75,11 @@ header "Gerando senhas seguras"
 PG_PASSWORD=$(gen_secret 24)
 JWT_SECRET=$(gen_secret 48)
 AMI_PASSWORD=$(gen_secret 20)
+ADMIN_PASSWORD=$(gen_secret 16)
 ok "Senha PostgreSQL gerada"
 ok "JWT Secret gerado"
 ok "Senha AMI gerada"
+ok "Senha admin gerada"
 
 # ── Instalação do Docker ──────────────────────────────────────────────────────
 header "Instalando dependências"
@@ -128,6 +130,7 @@ POSTGRES_PASSWORD=${PG_PASSWORD}
 # ── Backend ───────────────────────────────────────────────────────────────────
 JWT_SECRET=${JWT_SECRET}
 BACKEND_PORT=5000
+ADMIN_PASSWORD=${ADMIN_PASSWORD}
 
 # ── Asterisk AMI (Asterisk roda direto no SO — não em Docker) ─────────────────
 AMI_USERNAME=admin
@@ -433,9 +436,9 @@ echo -e "  ${BOLD}Acesso ao sistema:${RESET}"
 echo -e "    Frontend : ${CYAN}http://${SERVER_IP}${RESET}"
 echo -e "    API      : ${CYAN}http://${SERVER_IP}:5000${RESET}"
 echo ""
-echo -e "  ${BOLD}Credenciais padrão de primeiro acesso:${RESET}"
+echo -e "  ${BOLD}Credenciais de acesso:${RESET}"
 echo -e "    Usuário  : ${BOLD}admin${RESET}"
-echo -e "    Senha    : ${BOLD}123456${RESET}  ← troque imediatamente!"
+echo -e "    Senha    : ${BOLD}${ADMIN_PASSWORD}${RESET}"
 echo ""
 echo -e "  ${BOLD}Configuração SIP dos softphones:${RESET}"
 echo -e "    Servidor : ${CYAN}${SERVER_IP}${RESET}"
