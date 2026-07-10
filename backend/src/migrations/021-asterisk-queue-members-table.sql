@@ -1,0 +1,9 @@
+CREATE TABLE IF NOT EXISTS "AsteriskQueueMembers" (
+  "id" SERIAL,
+  "extensionNumber" VARCHAR(255) NOT NULL,
+  "penalty" INTEGER NOT NULL DEFAULT 0,
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "queueId" INTEGER REFERENCES "AsteriskQueues" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  PRIMARY KEY ("id")
+);

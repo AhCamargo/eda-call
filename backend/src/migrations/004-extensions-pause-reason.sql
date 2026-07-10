@@ -1,0 +1,1 @@
+ALTER TABLE "Extensions" ADD COLUMN IF NOT EXISTS "pauseReason" VARCHAR(255);

@@ -1,0 +1,19 @@
+CREATE TABLE IF NOT EXISTS "UraReverseCampaigns" (
+  "id" SERIAL,
+  "name" VARCHAR(255) NOT NULL,
+  "status" VARCHAR(50) NOT NULL DEFAULT 'draft',
+  "audioFile" VARCHAR(255),
+  "digitTimeoutSeconds" INTEGER NOT NULL DEFAULT 5,
+  "maxAttempts" INTEGER NOT NULL DEFAULT 2,
+  "retryIntervalSeconds" INTEGER NOT NULL DEFAULT 30,
+  "concurrentCalls" INTEGER NOT NULL DEFAULT 5,
+  "codec" VARCHAR(30) NOT NULL DEFAULT 'ulaw',
+  "callTimeoutSeconds" INTEGER NOT NULL DEFAULT 25,
+  "detectVoicemail" BOOLEAN NOT NULL DEFAULT FALSE,
+  "autoCallback" BOOLEAN NOT NULL DEFAULT FALSE,
+  "dialTechnology" VARCHAR(10) NOT NULL DEFAULT 'PJSIP',
+  "createdAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "updatedAt" TIMESTAMP WITH TIME ZONE NOT NULL,
+  "voipLineId" INTEGER REFERENCES "VoipLines" ("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  PRIMARY KEY ("id")
+);
