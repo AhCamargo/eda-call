@@ -453,10 +453,17 @@ AgentStatusLog.belongsTo(Extension, { foreignKey: "extensionId" });
 export const syncDatabase = async () => {
   await sequelize.authenticate();
 
+  // sync() primeiro: cria o schema inteiro do zero a partir dos modelos atuais
+  // (enums já nascem com todos os valores correntes, ex: "supervisor").
+  // As migrations abaixo existem para atualizar bancos antigos até esse mesmo
+  // estado — em uma instalação nova elas só encontram tudo já correto e viram
+  // no-ops seguros (IF NOT EXISTS / ADD VALUE IF NOT EXISTS). Rodar migrator
+  // antes do sync() faria a 1ª migration falhar em banco novo (ex: ALTER TYPE
+  // em um enum que ainda não existe).
+  await sequelize.sync();
+
   const { migrator } = await import("./migrator");
   await migrator.up();
-
-  await sequelize.sync();
 
   // Reset contatos travados em 'calling' após restart inesperado do backend
   const staleThreshold = new Date(Date.now() - 5 * 60 * 1000);

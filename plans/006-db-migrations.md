@@ -21,14 +21,45 @@
 > `Dockerfile.prod` atualizado para usá-lo. Testado localmente
 > (`pnpm build` copia os 27 arquivos para `dist/migrations/`).
 >
-> **Limitação da verificação:** não há Docker nem um Postgres funcional
-> neste ambiente (a instalação local via Homebrew está com uma biblioteca
-> quebrada), então **não foi possível rodar `migrator.up()` de ponta a
-> ponta contra um banco real**. A verificação ficou em: paridade textual
-> exata do SQL, tsc limpo, testes unitários passando, e confirmação de que
-> a API do Umzug usada bate com os tipos da versão instalada (3.8.3).
-> Testar em staging antes de subir para produção, como o próprio plano
-> recomenda.
+> **Atualização (mesmo dia): testado de ponta a ponta contra Postgres real
+> via Docker (a limitação acima foi contornada — Docker ficou disponível).**
+> Isso revelou **dois bugs reais** que só apareceriam em produção:
+>
+> 1. **Ordem `migrator.up()` → `sync()` quebrava instalação nova.** Rodar as
+>    migrations antes do `sequelize.sync()` falha na primeira migration
+>    (`ALTER TYPE "enum_Users_role" ADD VALUE IF NOT EXISTS 'supervisor'`)
+>    porque em um banco vazio o tipo enum ainda nem existe. No código
+>    original isso já acontecia, mas o `.catch(() => {})` escondia o erro —
+>    o schema real vinha inteiro do `sequelize.sync()` no fim, e as queries
+>    inline serviam só para atualizar bancos *antigos* (por isso a ordem
+>    nunca importou antes). Como o plano pedia para remover os `.catch()`,
+>    a ordem passou a importar. **Corrigido:** invertida a ordem em
+>    `syncDatabase()` — `sequelize.sync()` primeiro (cria o schema atual
+>    completo a partir dos models), `migrator.up()` depois (essas queries
+>    então só encontram tudo já correto e viram no-ops seguros num banco
+>    novo; num banco antigo, corrigem de verdade o que falta).
+> 2. **Migration 023 não era idempotente num banco novo.** O enum
+>    `dialTechnology` nasce só com `'SIP'` (único valor do model atual);
+>    comparar a coluna com o literal `'PJSIP'` no `UPDATE` falha direto
+>    ("invalid input value for enum"), não é um "0 linhas afetadas". Essa
+>    é exatamente a condição de "STOP" que o próprio plano previa.
+>    **Corrigido:** a migration agora só roda o `UPDATE` se `'PJSIP'`
+>    de fato existir como valor do enum (checagem via `pg_enum`/`pg_type`).
+>
+> **Verificação real feita** (Postgres 15 em container Docker descartável,
+> destruído ao final):
+> - Instalação nova (schema vazio) → `syncDatabase()` completo, 20 tabelas
+>   criadas, 27 migrations registradas em `SequelizeMeta`.
+> - Reexecução (simulando restart do backend) → sem erros, nada re-executa.
+> - Banco "legado" simulado à mão (enums sem os valores novos, tabelas sem
+>   as colunas novas, uma campanha `UraReverseCampaigns` real com
+>   `dialTechnology = 'PJSIP'`) → `syncDatabase()` corrige tudo: enums
+>   ganham os valores que faltavam, colunas são adicionadas, e a linha
+>   legada é preservada e corrigida para `'SIP'` (sem perda de dado).
+>
+> Ainda assim, testar em staging antes do deploy de produção continua sendo
+> a recomendação — a simulação de banco "legado" foi construída à mão e
+> pode não cobrir 100% do formato real do banco de produção.
 
 ## Why this matters
 
