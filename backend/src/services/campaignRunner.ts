@@ -7,21 +7,38 @@ import {
   Extension,
   VoipLine,
 } from "../db";
-import { originateCall } from "../ami";
+import { originateCall, getAmiClient } from "../ami";
 
 const runningCampaigns = new Set<number>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const randomResult = () => {
-  const options = [
-    "atendida",
-    "nao_atendida",
-    "numero_nao_existe",
-    "rejeitada",
-  ];
-  return options[Math.floor(Math.random() * options.length)];
+const CAUSE_TO_RESULT: Record<number, string> = {
+  16: "atendida",
+  1: "numero_nao_existe",
+  17: "rejeitada",
+  21: "rejeitada",
 };
+
+const waitForHangup = (uniqueid: string, timeoutMs = 60000): Promise<string> =>
+  new Promise((resolve) => {
+    const ami = getAmiClient();
+    const timer = setTimeout(() => {
+      ami.removeListener("managerevent", handler);
+      resolve("nao_atendida");
+    }, timeoutMs);
+
+    const handler = (event: any) => {
+      if (event.Event !== "Hangup") return;
+      if (event.Uniqueid !== uniqueid && event.Linkedid !== uniqueid) return;
+      clearTimeout(timer);
+      ami.removeListener("managerevent", handler);
+      const cause = Number(event.Cause ?? event.cause ?? 0);
+      resolve(CAUSE_TO_RESULT[cause] ?? "nao_atendida");
+    };
+
+    ami.on("managerevent", handler);
+  });
 
 export const runCampaign = async (campaignId: number, io: Server) => {
   if (runningCampaigns.has(campaignId)) {
@@ -64,15 +81,19 @@ export const runCampaign = async (campaignId: number, io: Server) => {
         ? campaign.voipLines[index % campaign.voipLines.length]
         : null;
 
+      let uniqueid: string | null = null;
       try {
-        await originateCall(
+        const response: any = await originateCall(
           contact.phoneNumber,
           extension?.number || "1000",
           voipLine?.name || null,
         );
+        uniqueid = response?.Uniqueid ?? response?.uniqueid ?? null;
       } catch {}
 
-      const result = randomResult();
+      const result = uniqueid
+        ? await waitForHangup(uniqueid, 60000)
+        : "nao_atendida";
       const callLog = await CallLog.create({
         campaignId: campaign.id,
         extensionId: extension?.id || null,
