@@ -138,6 +138,11 @@ AMI_PASSWORD=${AMI_PASSWORD}
 
 # ── Frontend ──────────────────────────────────────────────────────────────────
 VITE_API_URL=${VITE_API_URL}
+
+# ── Backup automático (banco de dados + gravações) ────────────────────────────
+BACKUP_DIR=/var/backups/edacall
+BACKUP_RETENTION_DAYS=14
+# RCLONE_REMOTE=meu-remote:edacall   # opcional — espelha o backup num destino externo/S3
 EOF
 
 ok ".env criado"
@@ -275,80 +280,6 @@ systemctl enable asterisk
 systemctl restart asterisk
 ok "Asterisk iniciado e habilitado no boot"
 
-# ── Instalação do Zabbix Agent ────────────────────────────────────────────────
-header "Instalando Zabbix Agent (monitoramento)"
-
-ZABBIX_CONF_DIR=""
-if command -v zabbix_agent2 &>/dev/null; then
-  ok "Zabbix Agent 2 já instalado: $(zabbix_agent2 -V 2>/dev/null | head -1)"
-  ZABBIX_CONF_DIR="/etc/zabbix/zabbix_agent2.d"
-elif command -v zabbix_agentd &>/dev/null; then
-  ok "Zabbix Agent já instalado: $(zabbix_agentd -V 2>/dev/null | head -1)"
-  ZABBIX_CONF_DIR="/etc/zabbix/zabbix_agentd.d"
-else
-  info "Instalando Zabbix Agent 2..."
-  UBUNTU_CODENAME=$(lsb_release -cs 2>/dev/null || echo "jammy")
-  ZBX_PKG="zabbix-release_7.0-2+ubuntu$(lsb_release -rs | tr -d '.')_all.deb"
-  ZBX_URL="https://repo.zabbix.com/zabbix/7.0/ubuntu/pool/main/z/zabbix-release/${ZBX_PKG}"
-  TMP_ZBX="/tmp/zabbix-release.deb"
-
-  if curl -fsSL "$ZBX_URL" -o "$TMP_ZBX" 2>/dev/null; then
-    dpkg -i "$TMP_ZBX" >/dev/null 2>&1 || true
-    apt-get update -qq
-    apt-get install -y -qq zabbix-agent2
-    ok "Zabbix Agent 2 instalado"
-    ZABBIX_CONF_DIR="/etc/zabbix/zabbix_agent2.d"
-  else
-    warn "Não foi possível baixar o Zabbix Agent automaticamente."
-    warn "Instale manualmente após a instalação do EdaCall:"
-    warn "  https://www.zabbix.com/download?zabbix=7.0&os_distribution=ubuntu"
-    ZABBIX_CONF_DIR=""
-  fi
-fi
-
-# Configura Zabbix Server (opcional — pode ser configurado depois)
-if [[ -n "$ZABBIX_CONF_DIR" ]]; then
-  echo ""
-  read -rp "  IP do seu servidor Zabbix (Enter para configurar depois): " ZABBIX_SERVER_IP
-
-  # Instala UserParameter
-  mkdir -p "$ZABBIX_CONF_DIR"
-  cp zabbix/userparameter_edacall.conf "${ZABBIX_CONF_DIR}/userparameter_edacall.conf"
-  ok "UserParameter instalado em ${ZABBIX_CONF_DIR}/userparameter_edacall.conf"
-
-  # Configura servidor Zabbix se informado
-  if [[ -n "${ZABBIX_SERVER_IP:-}" ]]; then
-    ZABBIX_MAIN_CONF="/etc/zabbix/zabbix_agent2.conf"
-    [[ ! -f "$ZABBIX_MAIN_CONF" ]] && ZABBIX_MAIN_CONF="/etc/zabbix/zabbix_agentd.conf"
-
-    if [[ -f "$ZABBIX_MAIN_CONF" ]]; then
-      sed -i "s/^Server=.*/Server=${ZABBIX_SERVER_IP}/" "$ZABBIX_MAIN_CONF" || true
-      sed -i "s/^ServerActive=.*/ServerActive=${ZABBIX_SERVER_IP}/" "$ZABBIX_MAIN_CONF" || true
-      sed -i "s/^Hostname=.*/Hostname=$(hostname -f)/" "$ZABBIX_MAIN_CONF" || true
-      ok "Zabbix Agent configurado para servidor: ${ZABBIX_SERVER_IP}"
-    fi
-
-    # Reinicia o agente
-    if systemctl is-enabled zabbix-agent2 &>/dev/null; then
-      systemctl enable --now zabbix-agent2
-      systemctl restart zabbix-agent2
-      ok "Zabbix Agent 2 iniciado e habilitado no boot"
-    elif systemctl is-enabled zabbix-agent &>/dev/null; then
-      systemctl enable --now zabbix-agent
-      systemctl restart zabbix-agent
-      ok "Zabbix Agent iniciado e habilitado no boot"
-    fi
-  else
-    warn "Servidor Zabbix não configurado. Configure depois em: ${ZABBIX_MAIN_CONF:-/etc/zabbix/zabbix_agent2.conf}"
-    warn "Após configurar, reinicie: sudo systemctl restart zabbix-agent2"
-  fi
-
-  # Adiciona porta Zabbix ao .env para referência
-  echo "" >> .env
-  echo "# ── Zabbix ───────────────────────────────────────────────────────────────────" >> .env
-  echo "ZABBIX_SERVER=${ZABBIX_SERVER_IP:-}" >> .env
-fi
-
 # ── Firewall ──────────────────────────────────────────────────────────────────
 header "Configurando firewall (UFW)"
 
@@ -406,6 +337,21 @@ systemctl daemon-reload
 systemctl enable edacall
 ok "Serviço systemd criado — inicia automaticamente no boot"
 
+# ── Backup automático (banco de dados + gravações) ────────────────────────────
+header "Configurando backup automático"
+
+install -m 755 scripts/backup.sh /usr/local/bin/edacall-backup
+install -m 755 scripts/restore.sh /usr/local/bin/edacall-restore
+
+cat > /etc/cron.d/edacall-backup <<EOF
+# Backup diário do EDACall (banco de dados + gravações) — ver R4 da auditoria
+0 3 * * * root EDACALL_INSTALL_DIR=${INSTALL_DIR} /usr/local/bin/edacall-backup >> /var/log/edacall-backup.log 2>&1
+EOF
+chmod 644 /etc/cron.d/edacall-backup
+
+ok "Backup diário agendado para 03:00 em /var/backups/edacall (log em /var/log/edacall-backup.log)"
+warn "Teste a restauração ao menos uma vez: sudo edacall-restore <dump.sql.gz>"
+
 # ── Aguarda o backend ficar saudável ─────────────────────────────────────────
 header "Aguardando sistema inicializar"
 
@@ -454,9 +400,10 @@ echo -e "    Status        : ${CYAN}docker compose -f docker-compose.prod.yml ps
 echo ""
 echo -e "  ${BOLD}Arquivo de configuração:${RESET} ${CYAN}${INSTALL_DIR}/.env${RESET}"
 echo ""
-echo -e "  ${BOLD}Zabbix Agent — próximos passos:${RESET}"
-echo -e "    Template  : importe ${CYAN}zabbix/edacall-template.xml${RESET} no seu Zabbix Server"
-echo -e "    Host      : crie um host para ${BOLD}${SERVER_IP}${RESET} e vincule o template"
+echo -e "  ${BOLD}Backup:${RESET}"
+echo -e "    Agendado  : diariamente às 03:00 em ${CYAN}/var/backups/edacall${RESET}"
+echo -e "    Manual    : ${CYAN}sudo edacall-backup${RESET}"
+echo -e "    Restaurar : ${CYAN}sudo edacall-restore <dump.sql.gz>${RESET}"
 echo ""
 echo -e "${YELLOW}  ⚠  Guarde as senhas geradas — elas estão salvas em .env${RESET}"
 echo ""
