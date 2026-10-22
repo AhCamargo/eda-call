@@ -176,7 +176,7 @@ function StatusBar({ online, inCall, inCampaign, paused, training, offline, tota
 }) {
   if (!total) return <div className="h-2 rounded bg-zinc-800 w-full" />;
   const segs = [
-    { secs: inCall + inCampaign, color: "#6c5ce7" },
+    { secs: inCall + inCampaign, color: "#3d6bf5" },
     { secs: online, color: "#22c55e" },
     { secs: paused, color: "#facc15" },
     { secs: training, color: "#38bdf8" },
@@ -287,7 +287,7 @@ export default function RelatoriosProdutividade() {
       {/* Legenda */}
       <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
         {[
-          { color: "#6c5ce7", label: "Em Chamada / Campanha" },
+          { color: "#3d6bf5", label: "Em Chamada / Campanha" },
           { color: "#22c55e", label: "Online" },
           { color: "#facc15", label: "Pausado" },
           { color: "#38bdf8", label: "Treinamento" },
