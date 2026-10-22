@@ -84,6 +84,7 @@ import { createVoipLinesRouter } from "../routers/voipLines.router";
 import { createAuthRouter } from "../routers/auth.router";
 import { createSoundsRouter } from "../routers/sounds.router";
 import { createCampaignsRouter } from "../routers/campaigns.router";
+import { createDashboardRouter } from "../routers/dashboard.router";
 import { createQueuesRouter } from "../routers/queues.router";
 import { createAgentReportsRouter } from "../routers/agentReports.router";
 import { createReportsRouter } from "../routers/reports.router";
@@ -160,6 +161,13 @@ describe("matriz de autorização por papel (achados F1/F2/F3/F5/F6 da rodada 1)
       path: "/campaigns/1/contacts",
       adminOnly: false,
       buildRouter: () => createCampaignsRouter(fakeIo),
+    },
+    {
+      name: "GET /dashboard/live (requireSupervisor)",
+      method: "get",
+      path: "/dashboard/live",
+      adminOnly: false,
+      buildRouter: () => createDashboardRouter(),
     },
     {
       name: "GET /queues (requireSupervisor)",

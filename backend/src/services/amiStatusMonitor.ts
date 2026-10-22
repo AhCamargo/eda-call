@@ -72,7 +72,7 @@ const getEventChannels = (event: any) => {
   return [...new Set(values)] as string[];
 };
 
-const normalizeCommandOutput = (response: any) => {
+export const normalizeCommandOutput = (response: any) => {
   if (!response) return [];
 
   const output = response.Output ?? response.output;

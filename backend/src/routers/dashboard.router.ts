@@ -1,5 +1,35 @@
 import express, { Response } from "express";
-import { Extension, Campaign } from "../db";
+import { Op } from "sequelize";
+import {
+  sequelize,
+  Extension,
+  Campaign,
+  CampaignContact,
+  CallLog,
+  AsteriskQueue,
+  UraReverseCampaign,
+  UraReverseContact,
+} from "../db";
+import { runCommand } from "../ami";
+import { requireSupervisor } from "../middleware/auth";
+import { normalizeCommandOutput } from "../services/amiStatusMonitor";
+import { parseQueueShow, LiveQueue } from "../utils/queueShow";
+
+const AMI_TIMEOUT_MS = 2000;
+
+const readLiveQueues = async (): Promise<LiveQueue[] | null> => {
+  try {
+    const response = await Promise.race([
+      runCommand("queue show"),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error("timeout")), AMI_TIMEOUT_MS),
+      ),
+    ]);
+    return parseQueueShow(normalizeCommandOutput(response));
+  } catch {
+    return null; // Asterisk fora do ar — o painel mostra as filas sem dados ao vivo
+  }
+};
 
 export const createDashboardRouter = () => {
   const router = express.Router();
@@ -25,6 +55,86 @@ export const createDashboardRouter = () => {
     }
 
     res.json({ statusCounts, latestCampaigns: campaigns });
+  });
+
+  // Visão ao vivo do Painel: filas recebendo ligação, discador rodando e
+  // URAs reversas ativas.
+  router.get("/dashboard/live", requireSupervisor, async (_, res: Response) => {
+    const [queues, live, extensions, dialer, ura] = await Promise.all([
+      AsteriskQueue.findAll({ attributes: ["id", "name"], order: [["name", "ASC"]] }) as Promise<any[]>,
+      readLiveQueues(),
+      Extension.findAll({ attributes: ["number", "name"], raw: true }) as Promise<any[]>,
+      Campaign.findAll({ where: { status: "in_progress" }, attributes: ["id", "name"] }) as Promise<any[]>,
+      UraReverseCampaign.findAll({
+        where: { status: { [Op.in]: ["running", "paused"] } },
+        attributes: ["id", "name", "status"],
+      }) as Promise<any[]>,
+    ]);
+
+    const extName = new Map(extensions.map((e) => [String(e.number), e.name]));
+    const liveByName = new Map((live ?? []).map((q) => [q.name, q]));
+
+    const dialerCampaigns = await Promise.all(
+      dialer.map(async (c) => {
+        const [contacts, called, answered] = await Promise.all([
+          CampaignContact.count({ where: { campaignId: c.id } }),
+          CallLog.count({ where: { campaignId: c.id }, distinct: true, col: "phoneNumber" }),
+          CallLog.count({ where: { campaignId: c.id, result: "atendida" } }),
+        ]);
+        return { id: c.id, name: c.name, contacts, called, answered };
+      }),
+    );
+
+    const uraRows = ura.length
+      ? ((await UraReverseContact.findAll({
+          where: { campaignId: ura.map((c) => c.id) },
+          attributes: [
+            "campaignId",
+            "status",
+            [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+          ],
+          group: ["campaignId", "status"],
+          raw: true,
+        })) as unknown as Array<{ campaignId: number; status: string; count: string }>)
+      : [];
+
+    const uraCampaigns = ura.map((c) => {
+      const stats: Record<string, number> = {};
+      for (const row of uraRows) {
+        if (row.campaignId === c.id) stats[row.status] = Number(row.count);
+      }
+      const total = Object.values(stats).reduce((a, b) => a + b, 0);
+      return {
+        id: c.id,
+        name: c.name,
+        status: c.status,
+        total,
+        pending: stats.pending ?? 0,
+        calling: stats.calling ?? 0,
+        answered: stats.answered ?? 0,
+      };
+    });
+
+    return res.json({
+      asteriskOnline: live !== null,
+      queues: queues.map((q) => {
+        const lq = liveByName.get(q.name);
+        return {
+          name: q.name,
+          live: !!lq,
+          waiting: lq?.waiting ?? 0,
+          longestWaitSeconds: lq?.longestWaitSeconds ?? 0,
+          completed: lq?.completed ?? 0,
+          abandoned: lq?.abandoned ?? 0,
+          members: (lq?.members ?? []).map((m) => {
+            const number = m.name.replace(/^[A-Z]+\//i, "");
+            return { number, name: extName.get(number) ?? null, state: m.state };
+          }),
+        };
+      }),
+      dialerCampaigns,
+      uraCampaigns,
+    });
   });
 
   return router;

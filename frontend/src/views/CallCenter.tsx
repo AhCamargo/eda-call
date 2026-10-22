@@ -5,6 +5,8 @@ import {
 } from 'recharts';
 import { usePbx } from '../context/PbxContext';
 import PrimeirosPassos from '../components/PrimeirosPassos';
+import OperacaoAoVivo from '../components/OperacaoAoVivo';
+import { useLiveOverview } from '../hooks/useLiveOverview';
 
 // shadcn/ui
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -65,6 +67,11 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'text-primary', alert 
 
 export default function CallCenter() {
   const { statusCounts, extensions, reports } = usePbx();
+  const live = useLiveOverview();
+  // Pessoas realmente esperando nas filas (antes usava ramais "tocando").
+  const waitingInQueues = live
+    ? live.queues.reduce((sum, q) => sum + q.waiting, 0)
+    : statusCounts.ringing || 0;
 
   // Histórico de pontos para o gráfico de área
   const [history, setHistory] = useState(() =>
@@ -85,12 +92,12 @@ export default function CallCenter() {
       const next = [...prev.slice(1), {
         t: label,
         ativas: statusCounts.in_call || 0,
-        fila: statusCounts.ringing || 0,
+        fila: waitingInQueues,
         online: statusCounts.online || 0,
       }];
       return next;
     });
-  }, [statusCounts]);
+  }, [statusCounts, waitingInQueues]);
 
   // Métricas calculadas
   const totalAnswered = reports.quemAtendeu || 0;
@@ -98,10 +105,10 @@ export default function CallCenter() {
   const totalCalls = totalAnswered + totalInvalid + (statusCounts.in_call || 0) + (statusCounts.ringing || 0);
   const sla = totalCalls > 0 ? Math.round((totalAnswered / totalCalls) * 100) : 0;
   const abandonRate = totalCalls > 0 ? Math.round((totalInvalid / totalCalls) * 100) : 0;
-  const queueAlert = (statusCounts.ringing || 0) > 3;
+  const queueAlert = waitingInQueues > 3;
 
   const activeCalls = statusCounts.in_call || 0;
-  const inQueue = statusCounts.ringing || 0;
+  const inQueue = waitingInQueues;
   const onlineAgents = statusCounts.online || 0;
   const pausedAgents = statusCounts.paused || 0;
 
@@ -134,6 +141,8 @@ export default function CallCenter() {
       </div>
 
       <PrimeirosPassos />
+
+      <OperacaoAoVivo data={live} />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
