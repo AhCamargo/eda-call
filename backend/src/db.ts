@@ -427,7 +427,7 @@ export const InboundIvrOption = sequelize.define("InboundIvrOption", {
   keyDigit: { type: DataTypes.STRING(1), allowNull: false },
   label: { type: DataTypes.STRING, allowNull: true },
   actionType: {
-    type: DataTypes.ENUM("transfer_extension", "hangup"),
+    type: DataTypes.ENUM("transfer_extension", "transfer_queue", "hangup"),
     allowNull: false,
     defaultValue: "transfer_extension",
   },
