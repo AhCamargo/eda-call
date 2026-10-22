@@ -2,7 +2,6 @@ import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import { randomBytes } from "crypto";
-import { parse } from "csv-parse/sync";
 import { Server } from "socket.io";
 import config from "../config";
 import { originateReverseIvr } from "../ami";
@@ -17,11 +16,10 @@ import {
 import {
   upload,
   uploadAudio,
-  normalizePhone,
   parseWavFormat,
-  PHONE_REGEX,
 } from "../utils/routeHelpers";
 import { requireSupervisor } from "../middleware/auth";
+import { extractPhonesFromCsv } from "../utils/phoneList";
 import { actionLimiter } from "../middleware/rateLimit";
 
 const { asteriskSoundsDir } = config;
@@ -315,32 +313,14 @@ export const createUraReverseRouter = (io: Server) => {
         return res.status(400).json({ message: "Arquivo CSV é obrigatório" });
       }
 
-      const csv = req.file.buffer.toString("utf-8");
-      const records = parse(csv, {
-        columns: true,
-        skip_empty_lines: true,
-      }) as any[];
-
-      const normalized = records
-        .map((row: any) =>
-          normalizePhone(row.telefone || row.phone || row.phoneNumber),
-        )
-        .filter(Boolean);
-
-      const valid: string[] = [];
-      const invalid: string[] = [];
-
-      for (const phone of normalized) {
-        if (PHONE_REGEX.test(phone)) {
-          valid.push(phone);
-        } else {
-          invalid.push(phone);
-        }
-      }
+      const { valid, invalid } = extractPhonesFromCsv(
+        req.file.buffer.toString("utf-8"),
+      );
 
       if (!valid.length) {
         return res.status(400).json({
-          message: "Nenhum telefone válido encontrado na coluna telefone",
+          message:
+            "Nenhum telefone encontrado no arquivo. Use uma coluna chamada \"telefone\" com DDD (ex: 11999990000).",
           invalid,
         });
       }

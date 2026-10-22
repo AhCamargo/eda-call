@@ -1,9 +1,9 @@
 import express, { Request, Response } from "express";
-import { parse } from "csv-parse/sync";
 import { Server } from "socket.io";
 import { Campaign, CampaignContact, CallLog, Extension, VoipLine } from "../db";
 import { runCampaign } from "../services/campaignRunner";
 import { upload } from "../utils/routeHelpers";
+import { extractPhonesFromCsv } from "../utils/phoneList";
 import { requireSupervisor } from "../middleware/auth";
 import { actionLimiter } from "../middleware/rateLimit";
 
@@ -179,32 +179,51 @@ export const createCampaignsRouter = (io: Server) => {
         return res.status(400).json({ message: "Arquivo não enviado" });
       }
 
-      const csv = req.file.buffer.toString("utf-8");
-      const records = parse(csv, {
-        columns: true,
-        skip_empty_lines: true,
-      }) as any[];
+      const { valid, invalid } = extractPhonesFromCsv(
+        req.file.buffer.toString("utf-8"),
+      );
+      if (!valid.length) {
+        return res.status(400).json({
+          message:
+            "Nenhum telefone encontrado no arquivo. Use uma coluna chamada \"telefone\" com DDD (ex: 11999990000).",
+          totalInvalid: invalid.length,
+        });
+      }
 
-      const contacts = records
-        .map((row: any) => row.phoneNumber || row.phone || row.numero)
-        .filter(Boolean)
-        .map((phoneNumber: string) => ({
-          campaignId: campaign.id,
-          phoneNumber: String(phoneNumber),
-        }));
-
-      await CampaignContact.bulkCreate(contacts);
+      await CampaignContact.bulkCreate(
+        valid.map((phoneNumber) => ({ campaignId: campaign.id, phoneNumber })),
+      );
       return res.json({
         message: "Lista de telefones importada",
-        total: contacts.length,
+        total: valid.length,
+        totalInvalid: invalid.length,
       });
     },
   );
 
   router.post("/campaigns/:id/start", actionLimiter, async (req: Request, res: Response) => {
-    const campaign = (await Campaign.findByPk(req.params.id as string)) as any;
+    const campaign = (await Campaign.findByPk(req.params.id as string, {
+      include: [
+        { model: CampaignContact, as: "contacts", attributes: ["id"] },
+        { model: Extension, as: "extensions", attributes: ["id"] },
+        { model: VoipLine, as: "voipLines", attributes: ["id"] },
+      ],
+    })) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });
+    }
+
+    // Sem estes itens o discador "roda" sem fazer nada útil (liga para o
+    // ramal fixo 1000 ou disca sem linha) — melhor dizer o que falta.
+    const missing = [
+      !campaign.contacts?.length && "uma lista de contatos",
+      !campaign.extensions?.length && "pelo menos um ramal para atender",
+      !campaign.voipLines?.length && "uma linha telefônica",
+    ].filter(Boolean);
+    if (missing.length) {
+      return res.status(400).json({
+        message: `Antes de iniciar, adicione ${missing.join(", ")} em "Configurar".`,
+      });
     }
 
     runCampaign(campaign.id, io);
