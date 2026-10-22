@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import type { Campaign, CampaignStats, CallLogEntry } from "../types";
 import { useTranslation } from "react-i18next";
 import { usePbx } from "../context/PbxContext";
@@ -43,6 +43,8 @@ import {
   PhoneOff,
   PhoneMissed,
   PhoneForwarded,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 function Input({ ...props }) {
@@ -124,6 +126,109 @@ const formatPhone = (raw: string) => {
   return local(d);
 };
 
+function CampaignContactsPanel({
+  contacts,
+  calls,
+  loading,
+  onManage,
+}: {
+  contacts: { id: string; phoneNumber: string }[];
+  calls: CallLogEntry[];
+  loading: boolean;
+  onManage: () => void;
+}) {
+  // Última ligação de cada número (calls vêm sem ordem garantida).
+  const lastCall = new Map<string, CallLogEntry>();
+  [...calls]
+    .sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))
+    .forEach((c) => c.phoneNumber && lastCall.set(c.phoneNumber, c));
+
+  const called = contacts.filter((c) => lastCall.has(c.phoneNumber)).length;
+  const answered = contacts.filter(
+    (c) => lastCall.get(c.phoneNumber)?.result === "atendida",
+  ).length;
+  const pct = contacts.length ? Math.round((called / contacts.length) * 100) : 0;
+  const rows = [...contacts].sort((a, b) => Number(b.id) - Number(a.id));
+
+  return (
+    <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+          <span>{plural(contacts.length, "contato", "contatos")}</span>
+          {contacts.length > 0 && (
+            <>
+              <span>{called} já receberam ligação</span>
+              <span className="text-green-400">{plural(answered, "atendeu", "atenderam")}</span>
+              <span>{pct}% concluído</span>
+            </>
+          )}
+        </div>
+        <Button size="sm" variant="outline" className="h-7 text-xs" onClick={onManage}>
+          <Upload className="mr-1 h-3 w-3" />
+          Importar / editar lista
+        </Button>
+      </div>
+
+      {contacts.length > 0 && (
+        <div className="w-full bg-muted rounded-full h-1.5">
+          <div className="bg-primary h-1.5 rounded-full transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      )}
+
+      {contacts.length === 0 ? (
+        <p className="text-sm text-muted-foreground text-center py-4">
+          Nenhum contato. Clique em "Importar / editar lista" para enviar a planilha.
+        </p>
+      ) : (
+        <div className="max-h-72 overflow-y-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Telefone</TableHead>
+                <TableHead>Resultado</TableHead>
+                <TableHead>Ramal</TableHead>
+                <TableHead>Quando</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.slice(0, 200).map((c) => {
+                const call = lastCall.get(c.phoneNumber);
+                return (
+                  <TableRow key={c.id}>
+                    <TableCell className="font-mono text-xs">{formatPhone(c.phoneNumber)}</TableCell>
+                    <TableCell>
+                      {call ? (
+                        <ResultBadge result={call.result} />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">
+                          {loading ? "…" : "Aguardando"}
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {call?.Extension
+                        ? `${call.Extension.number}${call.Extension.name ? ` — ${call.Extension.name}` : ""}`
+                        : "—"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {call?.createdAt ? new Date(call.createdAt).toLocaleString("pt-BR") : "—"}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+          {rows.length > 200 && (
+            <p className="text-xs text-muted-foreground p-2 text-center">
+              Mostrando os 200 mais recentes de {rows.length}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Campanhas() {
   const { t } = useTranslation();
   const {
@@ -138,6 +243,7 @@ export default function Campanhas() {
     uploadPhones,
     startCampaign,
     fetchAll,
+    socket,
   } = usePbx();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -148,6 +254,37 @@ export default function Campanhas() {
     intervalSeconds: 5,
   });
   const [assignTab, setAssignTab] = useState("phones");
+
+  // Painel de contatos aberto embaixo da campanha (igual à URA Reversa)
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailCalls, setDetailCalls] = useState<CallLogEntry[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const loadDetail = useCallback(async (campaignId: string) => {
+    try {
+      const res = await api.get(`/campaigns/${campaignId}/report`);
+      setDetailCalls(res.data?.calls ?? []);
+    } catch {
+      setDetailCalls([]);
+    } finally {
+      setDetailLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!expandedId) return;
+    setDetailLoading(true);
+    setDetailCalls([]);
+    loadDetail(expandedId);
+    // Atualiza a cada ligação concluída desta campanha.
+    const onCall = (evt: { campaignId?: string | number }) => {
+      if (String(evt?.campaignId) === String(expandedId)) loadDetail(expandedId);
+    };
+    socket.on("call:update", onCall);
+    return () => {
+      socket.off("call:update", onCall);
+    };
+  }, [expandedId, loadDetail, socket]);
   // Contatos que entraram na última importação, para destacar na lista.
   const [importBaseline, setImportBaseline] = useState<Set<string> | null>(null);
   const [contactSearch, setContactSearch] = useState("");
@@ -461,8 +598,10 @@ export default function Campanhas() {
                         {key === "linha" ? "Falta" : "Nenhum"}
                       </button>
                     );
+                  const isOpen = expandedId === campaign.id;
                   return (
-                  <TableRow key={campaign.id}>
+                  <Fragment key={campaign.id}>
+                  <TableRow className={isOpen ? "border-b-0" : ""}>
                     <TableCell className="font-medium">
                       {campaign.name}
                     </TableCell>
@@ -517,6 +656,19 @@ export default function Campanhas() {
                         </Button>
                         <Button
                           size="sm"
+                          variant={isOpen ? "secondary" : "outline"}
+                          title="Ver contatos e resultado de cada ligação"
+                          onClick={() => setExpandedId(isOpen ? null : campaign.id)}
+                        >
+                          {isOpen ? (
+                            <ChevronUp className="mr-1 h-3.5 w-3.5" />
+                          ) : (
+                            <ChevronDown className="mr-1 h-3.5 w-3.5" />
+                          )}
+                          Contatos
+                        </Button>
+                        <Button
+                          size="sm"
                           variant="outline"
                           title="Ver resultado"
                           onClick={() => openReport(campaign)}
@@ -543,6 +695,22 @@ export default function Campanhas() {
                       </div>
                     </TableCell>
                   </TableRow>
+                  {isOpen && (
+                    <TableRow className="hover:bg-transparent">
+                      <TableCell colSpan={6} className="pt-0">
+                        <CampaignContactsPanel
+                          contacts={campaign.contacts ?? []}
+                          calls={detailCalls}
+                          loading={detailLoading}
+                          onManage={() => {
+                            openAssign(campaign);
+                            setAssignTab("phones");
+                          }}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                  </Fragment>
                   );
                 })
               )}
