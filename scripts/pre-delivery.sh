@@ -9,11 +9,7 @@ cd "$ROOT_DIR"
 echo "== Backend checks =="
 if [ -d "backend" ]; then
   cd backend
-  if command -v pnpm >/dev/null 2>&1; then
-    pnpm install
-  else
-    npm install
-  fi
+  npm ci
   npm run lint --if-present
   npm test --if-present
   cd ..
@@ -24,11 +20,7 @@ fi
 echo "== Frontend checks =="
 if [ -d "frontend" ]; then
   cd frontend
-  if command -v pnpm >/dev/null 2>&1; then
-    pnpm install
-  else
-    npm install
-  fi
+  npm ci
   npm run build --if-present
   cd ..
 else

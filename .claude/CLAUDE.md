@@ -23,7 +23,7 @@ PABX IP full-stack voltado para call centers. Sistema em produção, deploy via 
 | Infra | Docker Compose, Coolify (self-hosted) |
 | Monitoramento | Zabbix + Grafana |
 | Segurança | Fail2ban (contexto `asterisk-edacall`) |
-| Package manager | pnpm (workspaces na raiz) |
+| Package manager | npm |
 
 ---
 
@@ -43,7 +43,7 @@ eda-call/
 │   └── recordings/                  ← gravações de chamadas (.wav)
 ├── backend/
 │   └── src/
-│       ├── server.ts                ← bootstrap: licença → DB → serviços → rotas
+│       ├── server.ts                ← bootstrap: DB → serviços → rotas
 │       ├── routes.ts                ← TODOS os endpoints REST (~2800 linhas, monolítico)
 │       ├── db.ts                    ← modelos Sequelize + syncDatabase() com migrations inline
 │       ├── ami.ts                   ← originateCall, originateReverseIvr, runCommand
@@ -55,8 +55,7 @@ eda-call/
 │           ├── campaignRunner.ts        ← discador outbound (campanhas simples)
 │           ├── uraReverseWorker.ts      ← worker do discador URA reversa
 │           ├── recordingsSyncService.ts ← sincroniza arquivos .wav com banco
-│           ├── agentStatusLogger.ts     ← log de produtividade por agente
-│           └── license.ts               ← validação de licença RSA
+│           └── agentStatusLogger.ts     ← log de produtividade por agente
 ├── frontend/
 │   └── src/
 │       ├── App.tsx                  ← rotas React Router + tela de login
@@ -66,7 +65,6 @@ eda-call/
 │       ├── hooks/useSipClient.ts    ← hook SIP.js (WebRTC)
 │       ├── views/                   ← páginas (uma por módulo)
 │       └── components/ui/           ← componentes shadcn/ui
-├── license/                         ← gerador de licença RSA (keys privada/pública)
 ├── monitor/                         ← Zabbix + Grafana (docker-compose separado)
 ├── deploy/fail2ban/                 ← config fail2ban para SIP
 ├── .claude/agents/                  ← agentes Claude especializados
@@ -181,10 +179,6 @@ const { data } = await api.get("/meu-endpoint");
 - Contatos travados em `calling` por > 5 min são liberados no boot via `syncDatabase()`
 - Não alterar a lógica de lock sem entender o ciclo de vida dos contatos
 
-### `backend/src/services/license.ts`
-- Validação RSA na inicialização — falha = `process.exit(1)`
-- Chaves em `license/keys/` — não commitar a chave privada (já no `.gitignore` da pasta)
-
 ---
 
 ## Formato de áudio para URA
@@ -238,8 +232,8 @@ Definidos em `.claude/agents/`:
 
 **Desenvolvimento local:**
 ```bash
-cd backend && pnpm install && pnpm dev   # porta 5000
-cd frontend && pnpm install && pnpm dev  # porta 5173
+cd backend && npm install && npm run dev   # porta 5000
+cd frontend && npm install && npm run dev  # porta 5173
 ```
 
 **Docker completo:**

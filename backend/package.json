@@ -1,7 +1,6 @@
 {
   "name": "edacall-backend",
   "version": "1.0.0",
-  "packageManager": "pnpm@10.17.1+sha512.17c560fca4867ae9473a3899ad84a88334914f379be46d455cbf92e5cf4b39d34985d452d2583baf19967fa76cb5c17bc9e245529d0b98745721aa7200ecaf7a",
   "main": "src/server.ts",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -14,31 +13,36 @@
   "dependencies": {
     "asterisk-manager": "^0.2.0",
     "bcryptjs": "^2.4.3",
-    "cors": "^2.8.5",
-    "csv-parse": "^5.5.6",
-    "dotenv": "^16.4.5",
-    "express": "^4.21.0",
+    "cors": "^2.8.6",
+    "csv-parse": "^7.0.2",
+    "dotenv": "^16.6.1",
+    "express": "^4.22.2",
     "express-async-errors": "^3.1.1",
-    "express-rate-limit": "^7.4.1",
-    "jsonwebtoken": "^9.0.2",
-    "multer": "^2.1.1",
-    "pg": "^8.12.0",
-    "sequelize": "^6.37.3",
-    "socket.io": "^4.7.5",
+    "express-rate-limit": "^7.5.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.3.0",
+    "pg": "^8.23.0",
+    "sequelize": "^6.37.8",
+    "socket.io": "^4.8.3",
     "umzug": "^3.8.3",
-    "winston": "^3.14.2",
+    "winston": "^3.19.0",
     "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
-    "@types/multer": "^2.1.0",
-    "@types/node": "^25.5.0",
-    "@vitest/coverage-v8": "^4.1.10",
-    "nodemon": "^3.1.4",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.1.10"
+    "@types/multer": "^2.2.0",
+    "@types/node": "^25.9.6",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.11",
+    "nodemon": "^3.1.14",
+    "supertest": "^7.2.2",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

@@ -16,22 +16,17 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
-
-      - name: Enable pnpm via corepack
-        run: |
-          corepack enable
-          corepack prepare pnpm@latest --activate
+          node-version: '22'
 
       - name: Backend: install & checks
         working-directory: eda-call/backend
         run: |
-          pnpm install
-          pnpm run lint --if-present
-          pnpm test --if-present
+          npm ci
+          npm run lint --if-present
+          npm test --if-present
 
       - name: Frontend: install & build
         working-directory: eda-call/frontend
         run: |
-          pnpm install
-          pnpm run build
+          npm ci
+          npm run build

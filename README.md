@@ -25,26 +25,20 @@ docker compose up --build
 - Frontend (Next.js): http://localhost:5173
 - API: http://localhost:5000/health
 
-## Desenvolvimento local com pnpm
+## Desenvolvimento local com npm
 
-1. Habilite o Corepack (uma vez na maquina):
+1. Instale dependencias:
 
 ```bash
-corepack enable
+cd backend && npm install
+cd ../frontend && npm install
 ```
 
-2. Instale dependencias:
+2. Rode em dev:
 
 ```bash
-cd backend && pnpm install
-cd ../frontend && pnpm install
-```
-
-3. Rode em dev:
-
-```bash
-cd backend && pnpm dev
-cd ../frontend && pnpm dev
+cd backend && npm run dev
+cd ../frontend && npm run dev
 ```
 
 ## Deploy no Coolify (self-hosted)
@@ -97,6 +91,18 @@ Notas importantes:
 - `GET /reports/calls-by-campaign`
 - `GET /reports/ura-logs`
 - `GET /reports/recordings`
+- `GET /metrics` — disco de gravações, erros 5xx recentes, chamadas ativas e status do AMI (acesso restrito à rede interna, ver `backend/src/routers/metrics.router.ts`)
+
+## Backup
+
+`install.sh` agenda um backup diário (03:00) do banco de dados e das gravações via cron:
+
+```bash
+sudo edacall-backup                     # roda o backup manualmente
+sudo edacall-restore <dump.sql.gz>      # restaura o banco a partir de um dump
+```
+
+Configuração em `.env`: `BACKUP_DIR` (padrão `/var/backups/edacall`), `BACKUP_RETENTION_DAYS` (padrão 14) e, opcionalmente, `RCLONE_REMOTE` para espelhar o backup num destino externo/S3-compatível. As gravações são sincronizadas via `rsync` (incremental, não duplica o que já foi copiado). **Teste o restore pelo menos uma vez** — um backup nunca restaurado não é um backup confiável.
 
 ## URA Reversa (módulo de campanha)
 

@@ -4,8 +4,8 @@ RUN apk upgrade --no-cache
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 RUN npm run build
@@ -17,8 +17,8 @@ RUN apk upgrade --no-cache
 
 WORKDIR /app
 
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 
