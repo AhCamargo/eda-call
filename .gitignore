@@ -30,3 +30,6 @@ asterisk/sounds/campaigns/
 
 # Relatórios de auditoria de segurança — não publicar (repositório público)
 docs/security-audit/
+
+# Planilhas de contatos (telefones reais) — não versionar
+/*.csv
