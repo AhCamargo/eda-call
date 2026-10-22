@@ -294,7 +294,7 @@ export default function UraReversa() {
       await api.post(`/ura-reverse/campaigns/${id}/${action}`);
       await fetchAll();
     } catch (err: any) {
-      showMsg(false, err?.response?.data?.error ?? `Erro ao ${action}.`);
+      showMsg(false, (err?.response?.data?.message ?? err?.response?.data?.error) ?? `Erro ao ${action}.`);
     }
   };
 
@@ -330,7 +330,9 @@ export default function UraReversa() {
         <div>
           <h1 className="text-2xl font-semibold">URA Reversa</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Campanhas de discagem com menu interativo.
+            O sistema liga para uma lista de contatos, toca uma mensagem e o
+            cliente responde digitando uma opção (ex: 1 para falar com um
+            atendente).
           </p>
         </div>
         <Button onClick={() => { resetCreate(); setShowCreate(true); }}>

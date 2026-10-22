@@ -12,7 +12,7 @@ const resources = {
         campaignsDialer: "Discador",
         campaignsReverseIvr: "URA Reversa",
         campaignsReverseIvrReports: "Relatórios URA",
-        voipLines: "Linhas VoIP",
+        voipLines: "Linhas telefônicas",
         reports: "Relatórios",
         user: "Usuário",
         inboundRouting: "Roteamento de Entrada",
@@ -98,7 +98,7 @@ const resources = {
         confirmDelete: "Deseja deletar a campanha {{name}}?",
       },
       voip: {
-        title: "Linhas VoIP",
+        title: "Linhas telefônicas",
         registerLine: "Cadastrar linha",
         saveLine: "Salvar linha",
         reprovision: "Reprovisionar",

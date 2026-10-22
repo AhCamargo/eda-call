@@ -28,8 +28,8 @@ import {
   PhoneIncoming,
 } from "lucide-react";
 
-const EXPANDED: number = 240;
-const COLLAPSED: number = 56;
+const EXPANDED: number = 232;
+const COLLAPSED: number = 60;
 
 const LANGUAGES: LanguageOption[] = [
   { code: "pt-BR", flag: "🇧🇷", label: "Português (BR)" },
@@ -48,6 +48,7 @@ interface NavItemProps {
   to: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   label: string;
+  hint?: string;
   collapsed: boolean;
   iconColor: string;
 }
@@ -56,28 +57,27 @@ const NavItem: FC<NavItemProps> = ({
   to,
   icon: Icon,
   label,
+  hint,
   collapsed,
-  iconColor,
+  iconColor: _iconColor,
 }) => {
   return (
     <NavLink
       to={to}
-      title={collapsed ? label : undefined}
+      end
+      title={collapsed ? [label, hint].filter(Boolean).join(" — ") : hint}
       className={({ isActive }) =>
         [
-          "group relative flex items-center gap-3 rounded-lg transition-all duration-150",
-          "text-sm font-medium mx-2 mb-2 ",
-          collapsed ? "justify-center px-0 py-2.5" : "px-3 py-2",
+          "group relative flex items-center gap-2.5 rounded-md transition-colors duration-150",
+          "text-sm font-medium mx-2 mb-0.5",
+          collapsed ? "justify-center px-0 py-2.5" : "px-2.5 py-2",
           isActive
-            ? "bg-white/10 text-white shadow-[inset_2px_0_0_0_#6c5ce7]"
-            : "text-zinc-400 hover:bg-white/[0.06] hover:text-zinc-200",
+            ? "bg-[#16213f] text-[#eceef2] [&_svg]:text-[#8eaeff] before:absolute before:-left-2 before:top-2 before:bottom-2 before:w-[3px] before:rounded-r before:bg-[#3d6bf5]"
+            : "text-[#a0a7b3] hover:bg-[#1c2027] hover:text-[#eceef2]",
         ].join(" ")
       }
     >
-      <Icon
-        style={{ color: iconColor }}
-        className="h-[18px] w-[18px] shrink-0"
-      />
+      <Icon className="h-[18px] w-[18px] shrink-0" />
       {!collapsed && <span className="truncate leading-none">{label}</span>}
     </NavLink>
   );
@@ -91,14 +91,19 @@ interface SectionLabelProps {
 
 const SectionLabel: FC<SectionLabelProps> = ({ label, collapsed }) => {
   if (collapsed) {
-    return <div className="my-2 mx-4 border-t border-white/10" />;
+    return <div className="my-2 mx-4 border-t border-[#252a32]" />;
   }
   return (
-    <p className="px-4 pt-3 pb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-500 select-none">
+    <p className="px-4 pt-4 pb-1.5 text-[11px] leading-[14px] font-semibold uppercase tracking-[0.08em] text-[#7f8794] select-none">
       {label}
     </p>
   );
 };
+
+interface NavSection {
+  label?: string;
+  items: NavItem[];
+}
 
 /* ── Layout ────────────────────────────────────────────────────── */
 interface LayoutProps {
@@ -116,170 +121,181 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
     i18n.changeLanguage(code);
   };
 
-  const mainItems = useMemo<NavItem[]>(() => {
-    if (role === "agent")
-      return [
-        {
-          to: "/agent",
-          label: "Meu Ramal",
-          icon: Headset,
-          iconColor: "#22d3ee",
-        },
-        {
-          to: "/usuario",
-          label: "Meu Perfil",
-          icon: User,
-          iconColor: "#94a3b8",
-        },
-      ];
-    if (role === "supervisor")
-      return [
-        {
-          to: "/callcenter",
-          label: "Call Center",
-          icon: Monitor,
-          iconColor: "#a78bfa",
-        },
-        {
-          to: "/supervisor",
-          label: "Supervisor",
-          icon: ShieldCheck,
-          iconColor: "#facc15",
-        },
-        {
-          to: "/relatorios",
-          label: t("menu.reports"),
-          icon: BarChart2,
-          iconColor: "#38bdf8",
-        },
-        {
-          to: "/relatorios/produtividade",
-          label: "Produtividade",
-          icon: TrendingUp,
-          iconColor: "#6c5ce7",
-        },
-        {
-          to: "/gravacoes",
-          label: "Gravações",
-          icon: Mic,
-          iconColor: "#f87171",
-        },
-      ];
-    return [
+  // Menu agrupado pelo que a pessoa quer fazer, na ordem em que normalmente
+  // faz. Cada item tem uma dica (hint) em linguagem simples, exibida ao
+  // passar o mouse — quem nunca mexeu num PABX precisa entender só de olhar.
+  const sections = useMemo<NavSection[]>(() => {
+    const myExtension: NavItem = {
+      to: "/agent",
+      label: role === "agent" ? "Meu Ramal" : "Atender ligações",
+      hint: "Telefone no navegador: atenda e faça ligações sem aparelho",
+      icon: Headset,
+      iconColor: "#22d3ee",
+    };
+    const myProfile: NavItem = {
+      to: "/usuario",
+      label: "Meu Perfil",
+      hint: "Troque sua senha e escolha o ramal que você usa",
+      icon: User,
+      iconColor: "#94a3b8",
+    };
+
+    if (role === "agent") return [{ items: [myExtension, myProfile] }];
+
+    const isAdmin = role === "admin";
+
+    const monitor: NavItem[] = [
       {
         to: "/callcenter",
-        label: "Call Center",
+        label: "Painel ao vivo",
+        hint: "Quem está online, em ligação ou em pausa agora",
         icon: Monitor,
-        iconColor: "#a78bfa",
+        iconColor: "#8eaeff",
       },
-      { to: "/agent", label: "Atendente", icon: Headset, iconColor: "#22d3ee" },
+      ...(isAdmin ? [myExtension] : []),
       {
         to: "/supervisor",
-        label: "Supervisor",
+        label: "Supervisão",
+        hint: "Ouça, oriente ou entre nas ligações dos atendentes",
         icon: ShieldCheck,
         iconColor: "#facc15",
       },
-      {
-        to: "/ramais",
-        label: t("menu.extensions"),
-        icon: PhoneOutgoing,
-        iconColor: "#22d3ee",
-      },
-      {
-        to: "/linhas-voip",
-        label: t("menu.voipLines"),
-        icon: PhoneCall,
-        iconColor: "#38bdf8",
-      },
-      { to: "/gravacoes", label: "Gravações", icon: Mic, iconColor: "#f87171" },
-      {
-        to: "/relatorios",
-        label: t("menu.reports"),
-        icon: BarChart2,
-        iconColor: "#facc15",
-      },
-      {
-        to: "/relatorios/produtividade",
-        label: "Produtividade",
-        icon: TrendingUp,
-        iconColor: "#6c5ce7",
-      },
-      {
-        to: "/usuario",
-        label: t("menu.user"),
-        icon: User,
-        iconColor: "#94a3b8",
-      },
-      { to: "/usuarios", label: "Usuários", icon: Users, iconColor: "#a78bfa" },
     ];
-  }, [role, t]);
 
-  const centralItems = useMemo<NavItem[]>(() => {
-    if (role === "agent") return [];
-    const items: NavItem[] = [
+    const setup: NavItem[] = [
+      ...(isAdmin
+        ? [
+            {
+              to: "/linhas-voip",
+              label: "Linhas telefônicas",
+              hint: "1º passo: cadastre a conta do seu provedor de telefonia",
+              icon: PhoneCall,
+              iconColor: "#38bdf8",
+            },
+            {
+              to: "/ramais",
+              label: t("menu.extensions"),
+              hint: "2º passo: crie um ramal para cada pessoa ou telefone",
+              icon: PhoneOutgoing,
+              iconColor: "#22d3ee",
+            },
+          ]
+        : []),
       {
         to: "/central-telefonica",
         label: "Central Telefônica",
+        hint: "3º passo: o que quem liga ouve e para onde a ligação vai",
         icon: Building2,
         iconColor: "#34d399",
       },
       {
         to: "/filas",
         label: "Filas",
+        hint: "Grupos de atendentes que dividem as ligações recebidas",
         icon: ListFilter,
         iconColor: "#34d399",
       },
+      {
+        to: "/roteamento-entrada",
+        label: t("menu.inboundRouting"),
+        hint: "Para onde vai cada número que recebe ligações",
+        icon: PhoneIncoming,
+        iconColor: "#34d399",
+      },
+      ...(isAdmin
+        ? [
+            {
+              to: "/audios-ura",
+              label: "Áudios",
+              hint: "Mensagens gravadas tocadas no atendimento e nas campanhas",
+              icon: FolderOpen,
+              iconColor: "#fb923c",
+            },
+          ]
+        : []),
     ];
-    items.push({
-      to: "/roteamento-entrada",
-      label: t("menu.inboundRouting"),
-      icon: PhoneIncoming,
-      iconColor: "#34d399",
-    });
-    if (role === "admin") {
-      items.push({
-        to: "/audios-ura",
-        label: "Áudios URA",
-        icon: FolderOpen,
-        iconColor: "#fb923c",
-      });
-      items.push({
-        to: "/seguranca",
-        label: "Segurança SIP",
-        icon: ShieldAlert,
-        iconColor: "#ef4444",
-      });
-      items.push({
-        to: "/configuracoes",
-        label: "Configurações",
-        icon: Settings2,
-        iconColor: "#a78bfa",
-      });
-    }
-    return items;
-  }, [role]);
 
-  const campaignItems = useMemo<NavItem[]>(() => {
-    if (role === "agent") return [];
-    return [
+    const campaigns: NavItem[] = [
       {
         to: "/campanhas/discador",
         label: t("menu.campaignsDialer"),
+        hint: "Liga automaticamente para uma lista e passa para um atendente",
         icon: Phone,
         iconColor: "#f87171",
       },
       {
         to: "/campanhas/ura-reversa",
         label: t("menu.campaignsReverseIvr"),
+        hint: "Liga para uma lista, toca uma mensagem e o cliente digita uma opção",
         icon: Volume2,
         iconColor: "#4ade80",
       },
       {
         to: "/campanhas/ura-reversa/relatorios",
         label: t("menu.campaignsReverseIvrReports"),
+        hint: "Resultado das campanhas de URA Reversa",
         icon: TrendingUp,
-        iconColor: "#a78bfa",
+        iconColor: "#8eaeff",
       },
+    ];
+
+    const results: NavItem[] = [
+      {
+        to: "/relatorios",
+        label: t("menu.reports"),
+        hint: "Histórico de ligações feitas e recebidas",
+        icon: BarChart2,
+        iconColor: "#facc15",
+      },
+      {
+        to: "/relatorios/produtividade",
+        label: "Produtividade",
+        hint: "Tempo em ligação e em pausa de cada atendente",
+        icon: TrendingUp,
+        iconColor: "#3d6bf5",
+      },
+      {
+        to: "/gravacoes",
+        label: "Gravações",
+        hint: "Ouça e baixe as ligações gravadas",
+        icon: Mic,
+        iconColor: "#f87171",
+      },
+    ];
+
+    const system: NavItem[] = isAdmin
+      ? [
+          {
+            to: "/usuarios",
+            label: "Usuários",
+            hint: "Quem pode entrar no sistema e o que cada um pode fazer",
+            icon: Users,
+            iconColor: "#8eaeff",
+          },
+          {
+            to: "/seguranca",
+            label: "Segurança",
+            hint: "Endereços bloqueados por tentativas de invasão",
+            icon: ShieldAlert,
+            iconColor: "#ef4444",
+          },
+          {
+            to: "/configuracoes",
+            label: "Configurações",
+            hint: "Endereço do servidor e ajustes de rede",
+            icon: Settings2,
+            iconColor: "#8eaeff",
+          },
+          myProfile,
+        ]
+      : [myProfile];
+
+    return [
+      { label: "Acompanhar", items: monitor },
+      { label: "Configurar", items: setup },
+      { label: t("menu.campaigns"), items: campaigns },
+      { label: "Resultados", items: results },
+      { label: "Sistema", items: system },
     ];
   }, [role, t]);
 
@@ -291,26 +307,26 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
       {/* ══════════════════ SIDEBAR ══════════════════ */}
       <aside
         style={{ width: sidebarWidth }}
-        className="fixed inset-y-0 left-0 z-40 flex flex-col bg-[#111118] border-r border-white/[0.08] transition-[width] duration-200 overflow-hidden"
+        className="fixed inset-y-0 left-0 z-40 flex flex-col bg-[#14171c] border-r border-[#252a32] transition-[width] duration-200 overflow-hidden"
       >
         {/* Logo / Toggle */}
         <div
-          className="flex items-center h-14 shrink-0 border-b border-white/[0.08]"
+          className="flex items-center h-14 shrink-0 border-b border-[#252a32]"
           style={{
             justifyContent: collapsed ? "center" : "space-between",
             padding: collapsed ? "0" : "0 12px 0 16px",
           }}
         >
           {!collapsed && (
-            <span className="text-sm font-bold select-none">
-              <span style={{ color: "#e4e4eb" }}>EDA</span>
-              <span style={{ color: "#8577ed" }}>Call</span>
+            <span className="flex items-center gap-2.5 text-base font-semibold text-[#eceef2] select-none">
+              <img src="/favicon.svg" alt="" className="h-7 w-7" />
+              EdaCall
             </span>
           )}
           <button
             onClick={() => setCollapsed((c) => !c)}
             title={collapsed ? "Expandir menu" : "Recolher menu"}
-            className="flex items-center justify-center w-8 h-8 rounded-md text-zinc-500 hover:bg-white/10 hover:text-zinc-200 transition-colors"
+            className="flex items-center justify-center w-8 h-8 rounded-md text-[#7f8794] hover:bg-[#1c2027] hover:text-[#eceef2] transition-colors"
           >
             {collapsed ? (
               <PanelLeftOpen className="h-[17px] w-[17px]" />
@@ -322,41 +338,30 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden py-2 scrollbar-hide">
-          {mainItems.map((item) => (
-            <NavItem key={item.to} {...item} collapsed={collapsed} />
+          {sections.map((section, i) => (
+            <div key={section.label ?? i}>
+              {section.label && (
+                <SectionLabel label={section.label} collapsed={collapsed} />
+              )}
+              {section.items.map((item) => (
+                <NavItem key={item.to} {...item} collapsed={collapsed} />
+              ))}
+            </div>
           ))}
-
-          {centralItems.length > 0 && (
-            <>
-              <SectionLabel label="Central" collapsed={collapsed} />
-              {centralItems.map((item) => (
-                <NavItem key={item.to} {...item} collapsed={collapsed} />
-              ))}
-            </>
-          )}
-
-          {campaignItems.length > 0 && (
-            <>
-              <SectionLabel label={t("menu.campaigns")} collapsed={collapsed} />
-              {campaignItems.map((item) => (
-                <NavItem key={item.to} {...item} collapsed={collapsed} />
-              ))}
-            </>
-          )}
         </nav>
 
         {/* Footer */}
-        <div className="shrink-0 border-t border-white/[0.08] p-2">
+        <div className="shrink-0 border-t border-[#252a32] p-2">
           {!collapsed && user && (
             <div className="flex items-center gap-2 px-2 py-1 mb-1 min-w-0">
               <span
                 className="h-2 w-2 rounded-full shrink-0"
                 style={{ background: roleInfo.dot }}
               />
-              <span className="text-xs text-zinc-500 truncate">
+              <span className="text-xs text-[#a0a7b3] truncate">
                 {user?.username}
               </span>
-              <span className="text-xs text-zinc-600 shrink-0">
+              <span className="text-xs text-[#7f8794] shrink-0">
                 {" "}
                 - {roleInfo.label}
               </span>
@@ -367,8 +372,8 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
             onClick={onLogout}
             title={collapsed ? "Sair" : undefined}
             className={[
-              "flex items-center gap-3 w-full rounded-lg py-2 text-sm text-zinc-500",
-              "hover:bg-rose-500/10 hover:text-rose-400 transition-colors duration-150",
+              "flex items-center gap-2.5 w-full rounded-md py-2 text-sm text-[#a0a7b3]",
+              "hover:bg-[#2b1311] hover:text-[#ff7a72] transition-colors duration-150",
               collapsed ? "justify-center px-0" : "px-3",
             ].join(" ")}
           >
@@ -384,7 +389,7 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         className="flex flex-col flex-1 min-w-0 transition-[margin-left] duration-200"
       >
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex items-center justify-end h-14 px-4 gap-2 bg-[#111118]/80 backdrop-blur-sm border-b border-white/[0.08]">
+        <header className="sticky top-0 z-30 flex items-center justify-end h-14 px-6 gap-1 bg-[#14171c] border-b border-[#252a32]">
           {LANGUAGES.map((lang) => {
             const active = i18n.language === lang.code;
             return (
@@ -392,23 +397,22 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
                 key={lang.code}
                 onClick={() => changeLanguage(lang.code)}
                 title={lang.label}
-                className="flex items-center justify-center h-8 w-8 rounded-full text-lg transition-all duration-150"
-                style={{
-                  opacity: active ? 1 : 0.45,
-                  transform: active ? "scale(1.15)" : "scale(1)",
-                  boxShadow: active
-                    ? "0 0 0 2px #6c5ce7, 0 0 8px rgba(108,92,231,0.5)"
-                    : "none",
-                }}
+                aria-pressed={active}
+                className={[
+                  "h-8 px-2.5 rounded-md text-xs font-semibold tracking-[0.06em] transition-colors duration-150",
+                  active
+                    ? "bg-[#16213f] text-[#8eaeff]"
+                    : "text-[#7f8794] hover:bg-[#1c2027] hover:text-[#eceef2]",
+                ].join(" ")}
               >
-                {lang.flag}
+                {lang.code === "pt-BR" ? "PT" : lang.code.toUpperCase()}
               </button>
             );
           })}
         </header>
 
         {/* Content */}
-        <main className="flex-1 p-4 md:p-6">
+        <main className="flex-1 p-4 md:p-6 bg-[#0c0e11]">
           <Outlet />
         </main>
       </div>

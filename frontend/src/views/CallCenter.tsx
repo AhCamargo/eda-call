@@ -4,6 +4,7 @@ import {
   BarChart, Bar, Cell
 } from 'recharts';
 import { usePbx } from '../context/PbxContext';
+import PrimeirosPassos from '../components/PrimeirosPassos';
 
 // shadcn/ui
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -125,12 +126,14 @@ export default function CallCenter() {
   return (
     <div className="space-y-4 text-zinc-100">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Call Center</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Painel ao vivo</h1>
         <div className="flex items-center gap-2 text-xs text-zinc-400">
           <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
           Tempo real
         </div>
       </div>
+
+      <PrimeirosPassos />
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

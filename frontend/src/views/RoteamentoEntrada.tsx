@@ -179,9 +179,16 @@ export default function RoteamentoEntrada() {
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <PhoneIncoming className="h-5 w-5 text-emerald-400" />
-          <h1 className="text-lg font-semibold">{t("inboundRoutes.title")}</h1>
+        <div>
+          <div className="flex items-center gap-2">
+            <PhoneIncoming className="h-5 w-5 text-emerald-400" />
+            <h1 className="text-lg font-semibold">{t("inboundRoutes.title")}</h1>
+          </div>
+          <p className="text-sm text-muted-foreground mt-0.5 max-w-2xl">
+            Se você tem mais de um número, escolha para onde vai cada um: um
+            ramal, uma fila ou a Central Telefônica. Com um número só, basta
+            configurar a Central Telefônica.
+          </p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={handleReprovisionAll}>

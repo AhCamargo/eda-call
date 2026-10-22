@@ -197,7 +197,13 @@ export default function Usuarios() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users size={20} className="text-violet-400" />
-          <h1 className="text-2xl font-bold tracking-tight">Usuários</h1>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Usuários</h1>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              Quem pode entrar no sistema. Atendente usa só o próprio ramal;
+              supervisor acompanha a equipe; admin configura tudo.
+            </p>
+          </div>
         </div>
         <Button
           onClick={openCreate}
@@ -557,7 +563,7 @@ function UserForm({
             >
               <r.icon
                 size={16}
-                style={{ color: form.role === r.value ? "#a78bfa" : r.color }}
+                style={{ color: form.role === r.value ? "#8eaeff" : r.color }}
               />
               {r.label}
             </button>

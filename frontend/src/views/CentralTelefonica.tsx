@@ -637,8 +637,10 @@ export default function CentralTelefonica() {
             <Phone className="h-5 w-5 text-primary" />
             Central Telefônica
           </h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            URAs receptivas
+          <p className="text-sm text-muted-foreground mt-0.5 max-w-2xl">
+            Defina o que acontece quando alguém liga para a sua empresa: a
+            mensagem de boas-vindas ("Digite 1 para vendas, 2 para
+            suporte...") e para qual ramal ou fila cada opção leva.
           </p>
         </div>
         <div className="flex gap-2">

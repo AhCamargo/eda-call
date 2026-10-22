@@ -200,9 +200,10 @@ export default function GerenciadorAudios() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Áudios para URA</h1>
+        <h1 className="text-2xl font-semibold">Áudios</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Faça upload de arquivos MP3 ou WAV, ou grave direto pelo telefone.
+          As mensagens que quem liga escuta — boas-vindas, menus e campanhas.
+          Envie um arquivo MP3 ou WAV, ou grave direto pelo telefone.
         </p>
       </div>
 

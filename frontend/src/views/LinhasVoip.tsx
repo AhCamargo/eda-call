@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { usePbx } from "../context/PbxContext";
 import type { VoipLine } from "../types";
@@ -36,6 +37,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  PhoneIncoming,
 } from "lucide-react";
 
 const CODEC_OPTIONS = ["ulaw", "alaw", "g729", "g722", "gsm", "opus"];
@@ -55,7 +57,7 @@ const emptyForm = {
   codecs: ["ulaw", "alaw"],
   callLimit: 0,
   insecure: "invite,port",
-  register: false,
+  register: true,
 };
 
 function FieldRow({
@@ -228,7 +230,7 @@ export default function LinhasVoip() {
     } catch (err: any) {
       setFeedback({
         type: "error",
-        message: err?.response?.data?.error || "Erro ao salvar linha.",
+        message: (err?.response?.data?.message ?? err?.response?.data?.error) || "Erro ao salvar linha.",
       });
     } finally {
       setLoading(false);
@@ -253,9 +255,9 @@ export default function LinhasVoip() {
     setReprovisioningId(id);
     try {
       await reprovisionVoipLine(id);
-      setFeedback({ type: "success", message: "Reprovisionado com sucesso." });
+      setFeedback({ type: "success", message: "Configuração reaplicada." });
     } catch {
-      setFeedback({ type: "error", message: "Erro ao reprovisionamento." });
+      setFeedback({ type: "error", message: "Não foi possível reaplicar a configuração." });
     } finally {
       setReprovisioningId(null);
     }
@@ -263,9 +265,17 @@ export default function LinhasVoip() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("voip.title")}</h1>
-        <Button onClick={openCreate}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">{t("voip.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-2xl">
+            A linha telefônica é a conta que você contratou com a operadora
+            de telefonia pela internet (VoIP). É por ela que o sistema faz e
+            recebe ligações para fora. Os dados de acesso são enviados pela
+            operadora.
+          </p>
+        </div>
+        <Button onClick={openCreate} className="shrink-0">
           <Plus className="mr-2 h-4 w-4" />
           {t("voip.registerLine")}
         </Button>
@@ -290,63 +300,55 @@ export default function LinhasVoip() {
           </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
+          {voipLines.length === 0 ? (
+            <div className="flex flex-col items-center gap-3 py-10 px-4 text-center">
+              <Phone className="h-8 w-8 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground max-w-md">
+                Nenhuma linha cadastrada ainda. Sem uma linha, os ramais só
+                conseguem ligar entre si.
+              </p>
+              <Button onClick={openCreate}>
+                <Plus className="mr-2 h-4 w-4" />
+                Cadastrar primeira linha
+              </Button>
+            </div>
+          ) : (
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Usuário / Host</TableHead>
-                <TableHead>Tipo</TableHead>
-                <TableHead>Porta</TableHead>
-                <TableHead>Codecs</TableHead>
-                <TableHead>Contexto saída</TableHead>
-                <TableHead>Contexto entrada</TableHead>
+                <TableHead>Operadora</TableHead>
+                <TableHead>Usuário</TableHead>
+                <TableHead>Recebe ligações?</TableHead>
                 <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {voipLines.length === 0 ? (
-                <TableRow>
-                  <TableCell
-                    colSpan={8}
-                    className="text-center text-muted-foreground py-8"
-                  >
-                    Nenhuma linha VoIP cadastrada.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                voipLines.map((line) => (
+              {voipLines.map((line) => (
                   <TableRow key={line.id}>
                     <TableCell className="font-medium">{line.name}</TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground">
-                        {line.username}@
-                      </span>
+                    <TableCell className="text-muted-foreground">
                       {line.host}
                     </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{line.type || "peer"}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{line.port || 5060}</Badge>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {line.codecs || "ulaw,alaw"}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {line.context || "default"}
-                      </Badge>
+                    <TableCell className="font-mono text-xs">
+                      {line.username}
                     </TableCell>
                     <TableCell>
                       {line.inboundContext ? (
                         <Badge
                           variant="secondary"
-                          className="border-violet-500/40 text-violet-400"
+                          className="gap-1 border-emerald-500/40 text-emerald-400"
                         >
-                          {line.inboundContext}
+                          <PhoneIncoming className="h-3 w-3" />
+                          Sim, pela Central Telefônica
                         </Badge>
                       ) : (
-                        <span className="text-muted-foreground text-xs">—</span>
+                        <Link
+                          to="/central-telefonica"
+                          className="text-xs text-muted-foreground underline-offset-2 hover:underline hover:text-foreground"
+                        >
+                          Não configurado — configurar
+                        </Link>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -356,7 +358,7 @@ export default function LinhasVoip() {
                           variant="outline"
                           onClick={() => handleReprovision(line.id)}
                           disabled={reprovisioningId === line.id}
-                          title="Reprovisionamento"
+                          title="Reaplicar configuração (use se a linha parou de funcionar)"
                         >
                           {reprovisioningId === line.id ? (
                             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -368,6 +370,7 @@ export default function LinhasVoip() {
                           size="sm"
                           variant="outline"
                           onClick={() => openEdit(line)}
+                          title="Editar"
                         >
                           <Pencil className="h-3.5 w-3.5" />
                         </Button>
@@ -376,16 +379,17 @@ export default function LinhasVoip() {
                           variant="outline"
                           className="text-destructive hover:bg-destructive/10"
                           onClick={() => setDeleteDialog(line)}
+                          title="Remover"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
-              )}
+                ))}
             </TableBody>
           </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -394,32 +398,43 @@ export default function LinhasVoip() {
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {editingLine ? "Editar linha VoIP" : "Nova linha VoIP"}
+              {editingLine ? "Editar linha telefônica" : "Nova linha telefônica"}
             </DialogTitle>
             <DialogDescription>
-              Configure o tronco SIP. O <strong>Contexto de saída</strong> é
-              usado pelos ramais para discar. O{" "}
-              <strong>Contexto de entrada</strong> é o destino das chamadas
-              recebidas (ex: URA receptiva).
+              Preencha com os dados que a operadora enviou. Na maioria dos
+              casos, só estes campos bastam.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Identificação */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <FieldRow
-                label="Nome *"
-                hint="Identificador único (ex: efix, voztel)"
+                label="Nome da linha *"
+                hint="Um apelido para reconhecer a linha. Sem espaços (ex: vivo, efix)."
               >
                 <Input
                   value={form.name}
                   onChange={(e) => set("name", e.target.value)}
-                  placeholder="efix"
+                  placeholder="minhaoperadora"
                   required
                   disabled={!!editingLine}
                 />
               </FieldRow>
-              <FieldRow label="Usuário / Número *">
+              <FieldRow
+                label="Endereço da operadora *"
+                hint="Também chamado de host, servidor ou proxy SIP."
+              >
+                <Input
+                  value={form.host}
+                  onChange={(e) => set("host", e.target.value)}
+                  placeholder="sip.operadora.com.br"
+                  required
+                />
+              </FieldRow>
+              <FieldRow
+                label="Usuário *"
+                hint="Normalmente é o número da linha ou um login."
+              >
                 <Input
                   value={form.username}
                   onChange={(e) => set("username", e.target.value)}
@@ -428,11 +443,8 @@ export default function LinhasVoip() {
                 />
               </FieldRow>
               <FieldRow
-                label={
-                  editingLine
-                    ? "Nova senha (deixe em branco para manter)"
-                    : "Senha *"
-                }
+                label={editingLine ? "Senha" : "Senha *"}
+                hint={editingLine ? "Deixe em branco para manter a atual." : undefined}
               >
                 <Input
                   type="password"
@@ -442,89 +454,21 @@ export default function LinhasVoip() {
                   required={!editingLine}
                 />
               </FieldRow>
-              <FieldRow label="Host *">
-                <Input
-                  value={form.host}
-                  onChange={(e) => set("host", e.target.value)}
-                  placeholder="sip.provedor.com.br"
-                  required
-                />
-              </FieldRow>
-              <FieldRow label="Porta">
-                <Input
-                  type="number"
-                  value={form.port}
-                  onChange={(e) => set("port", Number(e.target.value))}
-                  min={1}
-                  max={65535}
-                />
-              </FieldRow>
-              <FieldRow
-                label="Tipo do tronco"
-                hint="peer = sem registro | friend = bidirecional | user = registra"
-              >
-                <NativeSelect
-                  value={form.type}
-                  onChange={(e) => set("type", e.target.value)}
-                >
-                  <option value="peer">peer (tronco sem registro)</option>
-                  <option value="friend">friend (bidirecional)</option>
-                  <option value="user">user (registra no provedor)</option>
-                </NativeSelect>
-              </FieldRow>
             </div>
 
-            {/* Roteamento */}
-            <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Roteamento
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <FieldRow
-                label="Contexto de saída"
-                hint="Contexto que os ramais usam para discar por esta linha"
-              >
-                <Input
-                  value={form.context}
-                  onChange={(e) => set("context", e.target.value)}
-                  placeholder="default"
-                />
-              </FieldRow>
-              <FieldRow
-                label="Contexto de entrada (inbound)"
-                hint="Para onde vão as chamadas recebidas (URA receptiva, direto para ramal, etc.)"
-              >
-                <Input
-                  value={form.inboundContext}
-                  onChange={(e) => set("inboundContext", e.target.value)}
-                  placeholder="ura-receptiva (deixe vazio se não recebe)"
-                />
-              </FieldRow>
-            </div>
-
-            {/* Codecs */}
-            <Separator />
-            <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Codecs de áudio
-            </p>
-            <CodecCheckboxes
-              selected={form.codecs}
-              onChange={(v) => set("codecs", v)}
-            />
-
-            {/* Registro no provedor */}
-            <Separator />
-            <label className="flex items-center gap-3 cursor-pointer select-none">
+            <label className="flex items-start gap-3 cursor-pointer select-none rounded-md border border-input p-3">
               <input
                 type="checkbox"
-                className="h-4 w-4 rounded border-input accent-primary"
+                className="mt-0.5 h-4 w-4 rounded border-input accent-primary"
                 checked={form.register}
                 onChange={(e) => set("register", e.target.checked)}
               />
-              <span className="text-sm font-medium">
-                Registrar no provedor{" "}
-                <span className="text-xs font-normal text-muted-foreground">
-                  (envia <code>register =&gt;</code> ao provedor para receber chamadas entrantes)
+              <span className="text-sm">
+                <span className="font-medium">Manter conectada à operadora (registro)</span>
+                <span className="block text-xs text-muted-foreground mt-0.5">
+                  Deixe marcado — é o que a maioria das operadoras pede. Sem
+                  isso, a linha normalmente não recebe ligações. Desmarque só
+                  se a operadora liberou seu servidor por IP.
                 </span>
               </span>
             </label>
@@ -541,22 +485,45 @@ export default function LinhasVoip() {
               ) : (
                 <ChevronDown className="h-3.5 w-3.5" />
               )}
-              Configurações avançadas
+              Ajustes técnicos (só se a operadora pedir)
             </button>
 
             {showAdvanced && (
-              <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <FieldRow label="Porta" hint="Padrão: 5060">
+                  <Input
+                    type="number"
+                    value={form.port}
+                    onChange={(e) => set("port", Number(e.target.value))}
+                    min={1}
+                    max={65535}
+                  />
+                </FieldRow>
+                <FieldRow
+                  label="Tipo do tronco"
+                  hint="Deixe em peer, salvo instrução da operadora."
+                >
+                  <NativeSelect
+                    value={form.type}
+                    onChange={(e) => set("type", e.target.value)}
+                  >
+                    <option value="peer">peer (padrão)</option>
+                    <option value="friend">friend (bidirecional)</option>
+                    <option value="user">user</option>
+                  </NativeSelect>
+                </FieldRow>
                 <FieldRow label="Transporte">
                   <NativeSelect
                     value={form.transport}
                     onChange={(e) => set("transport", e.target.value)}
                   >
-                    <option value="udp">UDP</option>
+                    <option value="udp">UDP (padrão)</option>
                     <option value="tcp">TCP</option>
                     <option value="tls">TLS</option>
                   </NativeSelect>
                 </FieldRow>
-                <FieldRow label="Modo DTMF">
+                <FieldRow label="Modo DTMF" hint="Como os dígitos do teclado são enviados.">
                   <NativeSelect
                     value={form.dtmfmode}
                     onChange={(e) => set("dtmfmode", e.target.value)}
@@ -569,17 +536,17 @@ export default function LinhasVoip() {
                 </FieldRow>
                 <FieldRow
                   label="From Domain"
-                  hint="Para provedores que exigem (ex: sip1.voztel.com.br)"
+                  hint="Só para operadoras que exigem (ex: sip1.voztel.com.br)"
                 >
                   <Input
                     value={form.fromdomain}
                     onChange={(e) => set("fromdomain", e.target.value)}
-                    placeholder="sip.provedor.com.br"
+                    placeholder="sip.operadora.com.br"
                   />
                 </FieldRow>
                 <FieldRow
                   label="Insecure"
-                  hint="invite,port = aceita qualquer origem (troncos sem registro)"
+                  hint="invite,port = aceita chamadas de qualquer porta da operadora"
                 >
                   <Input
                     value={form.insecure}
@@ -587,7 +554,7 @@ export default function LinhasVoip() {
                     placeholder="invite,port"
                   />
                 </FieldRow>
-                <FieldRow label="Limite de chamadas" hint="0 = sem limite">
+                <FieldRow label="Limite de ligações simultâneas" hint="0 = sem limite">
                   <Input
                     type="number"
                     value={form.callLimit}
@@ -595,6 +562,33 @@ export default function LinhasVoip() {
                     min={0}
                   />
                 </FieldRow>
+                <FieldRow
+                  label="Contexto de saída"
+                  hint="Contexto do Asterisk usado pelos ramais para discar por esta linha."
+                >
+                  <Input
+                    value={form.context}
+                    onChange={(e) => set("context", e.target.value)}
+                    placeholder="default"
+                  />
+                </FieldRow>
+                <FieldRow
+                  label="Contexto de entrada"
+                  hint="Preenchido automaticamente ao ligar a linha à Central Telefônica."
+                >
+                  <Input
+                    value={form.inboundContext}
+                    onChange={(e) => set("inboundContext", e.target.value)}
+                    placeholder="automático"
+                  />
+                </FieldRow>
+              </div>
+              <FieldRow label="Codecs de áudio" hint="Na dúvida, mantenha ulaw e alaw.">
+                <CodecCheckboxes
+                  selected={form.codecs}
+                  onChange={(v) => set("codecs", v)}
+                />
+              </FieldRow>
               </div>
             )}
 
@@ -619,7 +613,7 @@ export default function LinhasVoip() {
       <Dialog open={!!deleteDialog} onOpenChange={() => setDeleteDialog(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Remover linha VoIP</DialogTitle>
+            <DialogTitle>Remover linha telefônica</DialogTitle>
             <DialogDescription>
               Tem certeza que deseja remover a linha{" "}
               <strong>{deleteDialog?.name}</strong>? Esta ação não pode ser

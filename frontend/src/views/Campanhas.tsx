@@ -203,7 +203,7 @@ export default function Campanhas() {
       }
       setDialogOpen(false);
     } catch (err) {
-      showFeedback("error", err?.response?.data?.error || "Erro ao salvar.");
+      showFeedback("error", (err?.response?.data?.message ?? err?.response?.data?.error) || "Erro ao salvar.");
     } finally {
       setLoading(false);
     }
@@ -229,7 +229,7 @@ export default function Campanhas() {
       await startCampaign(id);
       showFeedback("success", "Campanha iniciada.");
     } catch (err) {
-      showFeedback("error", err?.response?.data?.error || "Erro ao iniciar.");
+      showFeedback("error", (err?.response?.data?.message ?? err?.response?.data?.error) || "Erro ao iniciar.");
     } finally {
       setLoading(false);
     }
@@ -290,7 +290,13 @@ export default function Campanhas() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">{t("campaigns.title")}</h1>
+        <div>
+          <h1 className="text-2xl font-semibold">{t("campaigns.title")}</h1>
+          <p className="text-sm text-muted-foreground mt-0.5 max-w-2xl">
+            O sistema liga sozinho para uma lista de contatos e, quando a
+            pessoa atende, passa a ligação para um atendente livre.
+          </p>
+        </div>
         <Button onClick={openCreate}>
           <Plus className="mr-2 h-4 w-4" />
           {t("campaigns.createCampaign")}
@@ -615,7 +621,7 @@ export default function Campanhas() {
                     label: "Total contatos",
                     value: reportDialog.stats.totalContacts,
                     icon: Users,
-                    color: "#a78bfa",
+                    color: "#8eaeff",
                   },
                   {
                     label: "Atendidas",

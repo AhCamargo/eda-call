@@ -331,7 +331,8 @@ export default function Filas() {
             Filas de Atendimento
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Filas Asterisk — gravadas em <code className="text-xs">queues_custom.conf</code>
+            Um grupo de atendentes que divide as ligações recebidas. Quem liga
+            espera ouvindo música até alguém ficar livre.
           </p>
         </div>
         <div className="flex gap-2">

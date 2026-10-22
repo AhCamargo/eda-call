@@ -20,7 +20,7 @@ describe("Login", () => {
   it("faz login com sucesso e redireciona para o dashboard", () => {
     cy.login();
     cy.url().should("include", "/callcenter");
-    cy.contains("Call Center").should("be.visible");
+    cy.contains("Painel ao vivo").should("be.visible");
   });
 
   it("persiste sessão após reload", () => {

@@ -100,7 +100,13 @@ export default function Seguranca() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldAlert size={20} className="text-red-400" />
-          <h1 className="text-2xl font-bold tracking-tight">Segurança SIP</h1>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Segurança</h1>
+            <p className="text-sm text-zinc-500 mt-0.5">
+              Endereços bloqueados automaticamente após várias tentativas de
+              invasão. Desbloqueie só se reconhecer o endereço.
+            </p>
+          </div>
         </div>
         <Button
           variant="outline"
