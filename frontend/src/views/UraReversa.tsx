@@ -43,8 +43,9 @@ import {
   Settings,
   Pencil,
 } from "lucide-react";
+import { API_BASE } from "../api";
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:5000";
+const API_URL = API_BASE;
 const phoneRegex = /^\d{10,14}$/;
 const PHONE_HEADERS = ["telefone", "telefones", "phone", "phonenumber", "numero", "celular", "fone", "tel", "whatsapp"];
 const normalizeHeader = (h: string) =>

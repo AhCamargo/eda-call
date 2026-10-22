@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { usePbx } from "../context/PbxContext";
 import { AuthAudio, AuthDownloadButton } from "../components/AuthAudio";
 import type { Recording } from "../types";
+import { API_BASE } from "../api";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,7 +44,7 @@ import {
   Filter,
 } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = API_BASE;
 
 const resolveUrl = (recording) => {
   if (recording.webPath) {

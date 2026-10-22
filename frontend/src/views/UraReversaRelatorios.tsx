@@ -9,8 +9,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from '@/components/ui/table';
 import { Download, BarChart2 } from 'lucide-react';
+import { API_BASE } from "../api";
 
-const API_URL = (import.meta as any).env?.VITE_API_URL || 'http://localhost:5000';
+const API_URL = API_BASE;
 
 interface UraReportContact {
   id: string | number;
