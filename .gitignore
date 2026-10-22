@@ -27,3 +27,6 @@ backend/uploads/
 asterisk/recordings/
 asterisk/sounds/campaigns/
 
+
+# Relatórios de auditoria de segurança — não publicar (repositório público)
+docs/security-audit/
