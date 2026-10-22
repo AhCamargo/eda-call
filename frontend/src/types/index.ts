@@ -180,6 +180,8 @@ export interface Recording {
 // PBX Context Value
 export interface IPbxContextValue {
   user?: User;
+  /** Conexão Socket.IO autenticada — use esta, nunca crie outra na view. */
+  socket: import("socket.io-client").Socket;
   statusCounts: StatusCounts;
   extensions: Extension[];
   voipLines: VoipLine[];

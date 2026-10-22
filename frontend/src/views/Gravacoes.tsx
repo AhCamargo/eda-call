@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { usePbx } from "../context/PbxContext";
+import { AuthAudio, AuthDownloadButton } from "../components/AuthAudio";
 import type { Recording } from "../types";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -312,13 +313,7 @@ export default function Gravacoes() {
                     </TableCell>
                     <TableCell>
                       {url ? (
-                        <audio
-                          controls
-                          preload="none"
-                          src={url}
-                          className="h-8 w-48 accent-violet-500"
-                          style={{ colorScheme: "dark" }}
-                        />
+                        <AuthAudio src={url} className="h-8 w-48 accent-violet-500" />
                       ) : (
                         <span className="text-xs text-zinc-600">
                           Indisponível
@@ -328,16 +323,12 @@ export default function Gravacoes() {
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-1">
                         {url && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-7 w-7 p-0 text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10"
-                            asChild
+                          <AuthDownloadButton
+                            src={url}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-zinc-400 hover:text-blue-400 hover:bg-blue-500/10"
                           >
-                            <a href={url} download>
-                              <Download size={13} />
-                            </a>
-                          </Button>
+                            <Download size={13} />
+                          </AuthDownloadButton>
                         )}
                         <Button
                           size="sm"

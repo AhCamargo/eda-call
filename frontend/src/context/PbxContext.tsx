@@ -288,6 +288,7 @@ export const PbxProvider: FC<PbxProviderProps> = ({
 
   const value: IPbxContextValue = {
     user,
+    socket,
     statusCounts,
     extensions,
     voipLines,

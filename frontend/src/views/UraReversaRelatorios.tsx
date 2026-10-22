@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
+import { AuthDownloadButton } from '../components/AuthAudio';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -102,12 +103,15 @@ export default function UraReversaRelatorios() {
                             {recordingContacts.slice(0, 5).map((contact) => {
                               const url = resolveRecordingUrl(contact.recordingPath);
                               return (
-                                <Button key={contact.id} size="sm" variant="outline" asChild className="h-7 text-xs">
-                                  <a href={url} download>
-                                    <Download className="mr-1 h-3 w-3" />
-                                    {contact.phoneNumber}
-                                  </a>
-                                </Button>
+                                <AuthDownloadButton
+                                  key={contact.id}
+                                  src={url}
+                                  title="Baixar gravação"
+                                  className="inline-flex h-7 items-center rounded-md border border-input px-2 text-xs hover:bg-muted"
+                                >
+                                  <Download className="mr-1 h-3 w-3" />
+                                  {contact.phoneNumber}
+                                </AuthDownloadButton>
                               );
                             })}
                             {recordingContacts.length > 5 && (
