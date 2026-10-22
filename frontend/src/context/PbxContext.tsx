@@ -8,7 +8,7 @@ import {
   FC,
 } from "react";
 import { io, Socket } from "socket.io-client";
-import api, { setToken } from "../api";
+import api, { setToken, API_BASE } from "../api";
 import type {
   User,
   StatusCounts,
@@ -71,7 +71,7 @@ export const PbxProvider: FC<PbxProviderProps> = ({
   // única vez na criação do socket é seguro.
   const socket = useMemo<Socket>(
     () =>
-      io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+      io(API_BASE, {
         auth: { token },
       }),
     [],
