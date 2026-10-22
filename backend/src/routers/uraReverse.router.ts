@@ -354,6 +354,16 @@ export const createUraReverseRouter = (io: Server) => {
         return res.status(404).json({ message: "Campanha URA não encontrada" });
       }
 
+      const pendingContacts = await UraReverseContact.count({
+        where: { campaignId: campaign.id, status: "pending" },
+      });
+      if (!pendingContacts) {
+        return res.status(400).json({
+          message:
+            "Não há contatos para ligar. Edite a campanha e envie a lista de contatos.",
+        });
+      }
+
       campaign.status = "running";
       await campaign.save();
       await emitCampaignStats(campaign.id);

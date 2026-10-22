@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import api from "../api";
+import { usePbx } from "../context/PbxContext";
+import { audioToTelephonyWav } from "../lib/audioToTelephonyWav";
+import { AuthAudio, AuthDownloadButton } from "../components/AuthAudio";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -44,6 +46,9 @@ import {
 
 const API_URL = (import.meta as any).env?.VITE_API_URL || "http://localhost:5000";
 const phoneRegex = /^\d{10,14}$/;
+const PHONE_HEADERS = ["telefone", "telefones", "phone", "phonenumber", "numero", "celular", "fone", "tel", "whatsapp"];
+const normalizeHeader = (h: string) =>
+  h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z]/g, "");
 
 const inputCls =
   "flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50";
@@ -64,6 +69,18 @@ interface VoipLine { id: number; name: string; host: string; port: number }
 interface Extension { id: number; number: string; name: string }
 interface SoundFile { filename: string; asteriskPath: string }
 interface UraOption { keyDigit: string; actionType: "transfer_extension" | "hangup"; targetExtension: string }
+
+// Status de UraReverseContact no backend.
+const CONTACT_STATUS: Record<string, string> = {
+  pending: "Aguardando",
+  calling: "Ligando",
+  answered: "Atendeu",
+  no_answer: "Não atendeu",
+  invalid: "Número inválido",
+  busy: "Ocupado",
+  hangup: "Desligou",
+  finished: "Concluído",
+};
 interface Campaign {
   id: number;
   name: string;
@@ -119,7 +136,9 @@ export default function UraReversa() {
   const [createdId, setCreatedId] = useState<number | null>(null);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
-  const socket = useState(() => io(API_URL))[0];
+  const { socket } = usePbx();
+  const [stepError, setStepError] = useState<string | null>(null);
+  const [converting, setConverting] = useState(false);
 
   const showMsg = (ok: boolean, msg: string) => {
     setFeedback({ ok, msg });
@@ -141,17 +160,21 @@ export default function UraReversa() {
 
   useEffect(() => {
     fetchAll().catch(() => {});
-    socket.on("ura-reverse:stats", ({ campaignId, stats }) =>
-      setCampaigns((p) => p.map((c) => (c.id === campaignId ? { ...c, stats } : c))),
-    );
-    socket.on("ura-reverse:campaign-status", ({ campaignId, status }) =>
-      setCampaigns((p) => p.map((c) => (c.id === campaignId ? { ...c, status } : c))),
-    );
-    return () => { socket.off("ura-reverse:stats"); socket.off("ura-reverse:campaign-status"); };
-  }, []);
+    const onStats = ({ campaignId, stats }) =>
+      setCampaigns((p) => p.map((c) => (c.id === campaignId ? { ...c, stats } : c)));
+    const onStatus = ({ campaignId, status }) =>
+      setCampaigns((p) => p.map((c) => (c.id === campaignId ? { ...c, status } : c)));
+    socket.on("ura-reverse:stats", onStats);
+    socket.on("ura-reverse:campaign-status", onStatus);
+    return () => {
+      socket.off("ura-reverse:stats", onStats);
+      socket.off("ura-reverse:campaign-status", onStatus);
+    };
+  }, [socket]);
 
   const resetCreate = () => {
     setStep(0);
+    setStepError(null);
     setEditMode(false);
     setForm({ name: "", voipLineId: "", concurrentCalls: 5 });
     setAudioMode("library");
@@ -189,6 +212,7 @@ export default function UraReversa() {
     setCsvFile(null);
     setCsvPreview([]);
     setCsvInvalid([]);
+    setStepError(null);
     setStep(0);
     setShowCreate(true);
   };
@@ -196,10 +220,11 @@ export default function UraReversa() {
   // Step 1: create or update campaign
   const handleStepCampaign = async () => {
     if (!form.name.trim() || !form.voipLineId) {
-      showMsg(false, "Preencha o nome e a linha VoIP.");
+      setStepError("Preencha o nome e escolha a linha telefônica.");
       return;
     }
     setSaving(true);
+    setStepError(null);
     try {
       if (editMode && createdId) {
         await api.patch(`/ura-reverse/campaigns/${createdId}`, {
@@ -217,7 +242,7 @@ export default function UraReversa() {
       }
       setStep(1);
     } catch (err: any) {
-      showMsg(false, err?.response?.data?.message ?? "Erro ao salvar campanha.");
+      setStepError(err?.response?.data?.message ?? "Erro ao salvar campanha.");
     } finally {
       setSaving(false);
     }
@@ -227,6 +252,7 @@ export default function UraReversa() {
   const handleStepAudio = async () => {
     if (!createdId) return;
     setSaving(true);
+    setStepError(null);
     try {
       if (audioMode === "library" && selectedSound) {
         await api.patch(`/ura-reverse/campaigns/${createdId}`, { audioFile: selectedSound });
@@ -236,8 +262,8 @@ export default function UraReversa() {
         await api.post(`/ura-reverse/campaigns/${createdId}/audio`, fd);
       }
       setStep(2);
-    } catch {
-      showMsg(false, "Erro ao definir áudio.");
+    } catch (err: any) {
+      setStepError(err?.response?.data?.message ?? "Erro ao definir áudio.");
     } finally {
       setSaving(false);
     }
@@ -246,32 +272,57 @@ export default function UraReversa() {
   // Step 3: menu options
   const handleStepMenu = async () => {
     if (!createdId) return;
+    if (options.some((o) => o.actionType === "transfer_extension" && !o.targetExtension)) {
+      setStepError("Escolha o ramal de cada opção que transfere a ligação.");
+      return;
+    }
     setSaving(true);
+    setStepError(null);
     try {
       await api.post(`/ura-reverse/campaigns/${createdId}/options`, { options });
       setStep(3);
-    } catch {
-      showMsg(false, "Erro ao salvar menu.");
+    } catch (err: any) {
+      setStepError(err?.response?.data?.message ?? "Erro ao salvar menu.");
     } finally {
       setSaving(false);
     }
   };
 
   // Step 4: CSV
+  // Prévia aproximada — a leitura definitiva é feita no backend
+  // (utils/phoneList.ts), que aceita os mesmos formatos.
   const parseCsv = async (file: File) => {
-    const text = await file.text();
+    const text = (await file.text()).replace(/^\uFEFF/, "");
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-    const headers = lines[0]?.split(",").map((c) => c.trim().toLowerCase()) ?? [];
-    const idx = headers.findIndex((c) => ["telefone", "phone", "phonenumber"].includes(c));
-    if (idx < 0) { setCsvInvalid(['Coluna "telefone" não encontrada.']); setCsvPreview([]); return; }
-    const parsed = lines.slice(1).map((l) => String(l.split(",")[idx] ?? "").replace(/\D/g, ""));
-    setCsvPreview(parsed.filter((p) => phoneRegex.test(p)).slice(0, 20));
-    setCsvInvalid(parsed.filter((p) => p && !phoneRegex.test(p)).slice(0, 5));
+    const sep = [";", "\t", ","].find((d) => lines[0]?.includes(d)) ?? ",";
+    const rows = lines.map((l) => l.split(sep).map((c) => c.trim().replace(/^"|"$/g, "")));
+    const digits = (v?: string) => String(v ?? "").replace(/\D/g, "");
+    let idx = rows[0]?.map(normalizeHeader).findIndex((h) => PHONE_HEADERS.includes(h)) ?? -1;
+    let data = rows.slice(1);
+    if (idx < 0) {
+      if (rows[0]?.some((c) => phoneRegex.test(digits(c)))) data = rows;
+      const width = Math.max(0, ...data.map((r) => r.length));
+      let best = 0;
+      idx = 0;
+      for (let c = 0; c < width; c += 1) {
+        const hits = data.filter((r) => phoneRegex.test(digits(r[c]))).length;
+        if (hits > best) { best = hits; idx = c; }
+      }
+    }
+    const parsed = data.map((r) => digits(r[idx]));
+    const valid = parsed.filter((p) => phoneRegex.test(p));
+    setCsvPreview(valid.slice(0, 20));
+    setCsvInvalid(
+      valid.length
+        ? parsed.filter((p) => p && !phoneRegex.test(p)).slice(0, 5)
+        : ['Nenhum telefone encontrado. Use uma coluna chamada "telefone" com DDD.'],
+    );
   };
 
   const handleStepContacts = async () => {
     if (!createdId) return;
     setSaving(true);
+    setStepError(null);
     try {
       if (csvFile) {
         const fd = new FormData();
@@ -282,8 +333,8 @@ export default function UraReversa() {
       setShowCreate(false);
       resetCreate();
       showMsg(true, editMode ? "Campanha atualizada com sucesso!" : "Campanha criada com sucesso!");
-    } catch {
-      showMsg(false, "Erro ao enviar contatos.");
+    } catch (err: any) {
+      setStepError(err?.response?.data?.message ?? "Erro ao enviar contatos.");
     } finally {
       setSaving(false);
     }
@@ -294,7 +345,7 @@ export default function UraReversa() {
       await api.post(`/ura-reverse/campaigns/${id}/${action}`);
       await fetchAll();
     } catch (err: any) {
-      showMsg(false, (err?.response?.data?.message ?? err?.response?.data?.error) ?? `Erro ao ${action}.`);
+      showMsg(false, err?.response?.data?.message ?? "Não foi possível concluir a ação.");
     }
   };
 
@@ -306,8 +357,8 @@ export default function UraReversa() {
       await fetchAll();
       setDeleteTarget(null);
       if (detailId === deleteTarget.id) setDetailId(null);
-    } catch {
-      showMsg(false, "Erro ao remover campanha.");
+    } catch (err: any) {
+      showMsg(false, err?.response?.data?.message ?? "Erro ao remover campanha.");
     } finally {
       setDeleting(false);
     }
@@ -366,7 +417,7 @@ export default function UraReversa() {
           const isRunning = c.status === "running";
           const isPaused = c.status === "paused";
           const contacts = c.contacts ?? [];
-          const done = contacts.filter((x) => x.status === "done").length;
+          const done = contacts.filter((x) => x.status !== "pending" && x.status !== "calling").length;
           const pct = contacts.length ? Math.round((done / contacts.length) * 100) : 0;
 
           return (
@@ -432,6 +483,7 @@ export default function UraReversa() {
                     )}
                     {(isRunning || isPaused) && (
                       <Button size="sm" variant="destructive" className="h-8"
+                        title="Encerrar campanha"
                         onClick={() => handleControl(c.id, "finish")}>
                         <StopCircle className="h-3.5 w-3.5" />
                       </Button>
@@ -442,11 +494,13 @@ export default function UraReversa() {
                       <Pencil className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0 text-muted-foreground"
+                      title="Ver contatos e resultados"
                       onClick={() => setDetailId(detailId === c.id ? null : c.id)}>
                       <Settings className="h-3.5 w-3.5" />
                     </Button>
                     <Button size="sm" variant="ghost"
                       className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                      title="Excluir campanha"
                       onClick={() => setDeleteTarget(c)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
@@ -481,7 +535,7 @@ export default function UraReversa() {
                               <TableRow key={ct.id}>
                                 <TableCell className="font-mono text-xs">{ct.phoneNumber}</TableCell>
                                 <TableCell>
-                                  <Badge variant="outline" className="text-xs">{ct.status}</Badge>
+                                  <Badge variant="outline" className="text-xs">{CONTACT_STATUS[ct.status] ?? ct.status}</Badge>
                                 </TableCell>
                                 <TableCell className="text-xs text-muted-foreground">
                                   {ct.selectedOption ?? "—"}
@@ -492,13 +546,9 @@ export default function UraReversa() {
                                 <TableCell>
                                   {url ? (
                                     <div className="flex items-center gap-1">
-                                      <audio controls preload="none" src={url}
-                                        className="h-7 w-32" style={{ colorScheme: "dark" }} />
-                                      <a href={url} download>
-                                        <Button size="sm" variant="ghost" className="h-7 w-7 p-0">
-                                          <Download className="h-3 w-3" />
-                                        </Button>
-                                      </a>
+                                      <AuthAudio src={url} className="h-7 w-32" />
+                                      <AuthDownloadButton src={url}
+                                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground" />
                                     </div>
                                   ) : <span className="text-xs text-muted-foreground">—</span>}
                                 </TableCell>
@@ -549,10 +599,10 @@ export default function UraReversa() {
                 <input className={inputCls} placeholder="Ex: Cobrança Agosto"
                   value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} />
               </FieldCol>
-              <FieldCol label="Linha VoIP *" hint="Tronco pelo qual as ligações serão feitas.">
+              <FieldCol label="Linha telefônica *" hint="Por qual linha o sistema vai ligar.">
                 <select className={selectCls} value={form.voipLineId}
                   onChange={(e) => setForm((p) => ({ ...p, voipLineId: e.target.value }))}>
-                  <option value="">Selecione a linha...</option>
+                  <option value="">{voipLines.length ? "Selecione a linha..." : "Nenhuma linha cadastrada"}</option>
                   {voipLines.map((l) => (
                     <option key={l.id} value={l.id}>{l.name}</option>
                   ))}
@@ -579,7 +629,7 @@ export default function UraReversa() {
                 </Button>
                 <Button size="sm" variant={audioMode === "upload" ? "default" : "outline"}
                   onClick={() => setAudioMode("upload")} className="gap-1.5">
-                  <Upload className="h-3.5 w-3.5" /> Fazer upload
+                  <Upload className="h-3.5 w-3.5" /> Enviar arquivo
                 </Button>
               </div>
 
@@ -587,7 +637,7 @@ export default function UraReversa() {
                 <FieldCol label="Arquivo de áudio">
                   {sounds.length === 0 ? (
                     <p className="text-sm text-muted-foreground">
-                      Nenhum áudio na biblioteca. Faça upload em <strong>Áudios URA</strong> ou use a opção acima.
+                      Nenhum áudio na biblioteca. Envie em <strong>Áudios</strong> ou use "Enviar arquivo" acima.
                     </p>
                   ) : (
                     <select className={selectCls} value={selectedSound}
@@ -602,9 +652,34 @@ export default function UraReversa() {
               )}
 
               {audioMode === "upload" && (
-                <FieldCol label="Arquivo WAV (8 kHz, mono)">
-                  <input type="file" accept=".wav" className="text-sm text-muted-foreground"
-                    onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)} />
+                <FieldCol
+                  label="Arquivo de áudio (MP3 ou WAV)"
+                  hint="Qualquer qualidade — convertemos para o formato da telefonia automaticamente."
+                >
+                  <input type="file" accept="audio/*,.mp3,.wav" className="text-sm text-muted-foreground"
+                    disabled={converting}
+                    onChange={async (e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setAudioFile(null);
+                      setStepError(null);
+                      if (!f) return;
+                      setConverting(true);
+                      try {
+                        setAudioFile(await audioToTelephonyWav(f));
+                      } catch (err: any) {
+                        setStepError(err?.message ?? "Não foi possível converter o áudio.");
+                      } finally {
+                        setConverting(false);
+                      }
+                    }} />
+                  {converting && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Convertendo áudio...
+                    </p>
+                  )}
+                  {audioFile && !converting && (
+                    <p className="text-xs text-green-400">Pronto: {audioFile.name}</p>
+                  )}
                 </FieldCol>
               )}
             </div>
@@ -621,9 +696,11 @@ export default function UraReversa() {
                   <FieldCol label="Tecla">
                     <select className={`${selectCls} w-20`} value={opt.keyDigit}
                       onChange={(e) => updateOption(i, { keyDigit: e.target.value })}>
-                      {Array.from({ length: 10 }, (_, k) => (
-                        <option key={k} value={String(k)}>{k}</option>
-                      ))}
+                      {Array.from({ length: 10 }, (_, k) => String(k))
+                        .filter((k) => k === opt.keyDigit || !options.some((o) => o.keyDigit === k))
+                        .map((k) => (
+                          <option key={k} value={k}>{k}</option>
+                        ))}
                     </select>
                   </FieldCol>
                   <ChevronRight className="h-4 w-4 text-muted-foreground mb-2 shrink-0" />
@@ -655,7 +732,11 @@ export default function UraReversa() {
                 </div>
               ))}
               <Button variant="outline" size="sm" className="gap-1.5"
-                onClick={() => setOptions((p) => [...p, { keyDigit: String(p.length), actionType: "transfer_extension", targetExtension: "" }])}>
+                disabled={options.length >= 10}
+                onClick={() => setOptions((p) => {
+                  const next = ["1","2","3","4","5","6","7","8","9","0"].find((k) => !p.some((o) => o.keyDigit === k)) ?? "0";
+                  return [...p, { keyDigit: next, actionType: "transfer_extension", targetExtension: "" }];
+                })}>
                 <Plus className="h-3.5 w-3.5" /> Adicionar opção
               </Button>
             </div>
@@ -668,8 +749,9 @@ export default function UraReversa() {
                 {editMode
                   ? "Adicione mais contatos à campanha (opcional). Os já cadastrados serão mantidos."
                   : "Envie uma planilha CSV com os números a ligar."}{" "}
-                A coluna deve se chamar{" "}
-                <code className="bg-muted px-1 rounded text-xs">telefone</code>.
+                Use uma planilha salva como CSV com uma coluna{" "}
+                <code className="bg-muted px-1 rounded text-xs">telefone</code>{" "}
+                (um número por linha, com DDD).
               </p>
               <div
                 className="border-2 border-dashed border-white/10 rounded-lg p-8 text-center cursor-pointer hover:border-white/20 transition-colors"
@@ -705,6 +787,13 @@ export default function UraReversa() {
             </div>
           )}
 
+          {stepError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{stepError}</AlertDescription>
+            </Alert>
+          )}
+
           {/* Footer buttons */}
           <div className="flex justify-between pt-2">
             <Button variant="outline" size="sm"
@@ -714,7 +803,7 @@ export default function UraReversa() {
               {step === 0 ? "Cancelar" : "Voltar"}
             </Button>
 
-            <Button size="sm" disabled={saving}
+            <Button size="sm" disabled={saving || converting}
               onClick={() => {
                 if (step === 0) handleStepCampaign();
                 else if (step === 1) handleStepAudio();
