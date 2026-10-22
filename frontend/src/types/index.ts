@@ -200,7 +200,7 @@ export interface IPbxContextValue {
   deleteExtension: (id: string) => Promise<void>;
   pauseExtension: (id: string, reason: string) => Promise<void>;
   resumeExtension: (id: string) => Promise<void>;
-  createCampaign: (payload: CreateCampaignPayload) => Promise<void>;
+  createCampaign: (payload: CreateCampaignPayload) => Promise<Campaign>;
   updateCampaign: (
     id: string,
     payload: Partial<CreateCampaignPayload>,
@@ -211,7 +211,10 @@ export interface IPbxContextValue {
     extensionIds: string[],
   ) => Promise<void>;
   assignVoipLines: (campaignId: string, voipLineIds: string[]) => Promise<void>;
-  uploadPhones: (campaignId: string, file: File) => Promise<void>;
+  uploadPhones: (
+    campaignId: string,
+    file: File,
+  ) => Promise<{ total: number; totalInvalid: number }>;
   startCampaign: (campaignId: string) => Promise<void>;
   createVoipLine: (payload: CreateVoipLinePayload) => Promise<void>;
   updateVoipLine: (

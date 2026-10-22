@@ -90,12 +90,24 @@ function ResultBadge({ result }) {
   );
 }
 
-const statusVariant = (status) => {
-  if (status === "active" || status === "running") return "default";
-  if (status === "paused") return "secondary";
-  if (status === "finished") return "outline";
-  return "outline";
+// Status vindos do backend (Campaign.status): pending | in_progress | completed
+const CAMPAIGN_STATUS: Record<string, { label: string; variant: "default" | "secondary" | "outline" }> = {
+  pending: { label: "Aguardando início", variant: "outline" },
+  in_progress: { label: "Ligando", variant: "default" },
+  completed: { label: "Concluída", variant: "secondary" },
 };
+
+// O que ainda falta para a campanha poder ser iniciada (mesma regra do
+// backend em POST /campaigns/:id/start).
+const missingFor = (c: Campaign): string[] =>
+  [
+    !c.contacts?.length && "contatos",
+    !c.extensions?.length && "ramais",
+    !c.voipLines?.length && "linha",
+  ].filter(Boolean) as string[];
+
+const apiError = (err: any, fallback: string) =>
+  err?.response?.data?.message || fallback;
 
 export default function Campanhas() {
   const { t } = useTranslation();
@@ -117,9 +129,13 @@ export default function Campanhas() {
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
   const [form, setForm] = useState({
     name: "",
-    description: "",
     intervalSeconds: 5,
   });
+  const [assignTab, setAssignTab] = useState("phones");
+  const [assignFeedback, setAssignFeedback] = useState<{
+    type: string;
+    message: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: string;
@@ -163,7 +179,7 @@ export default function Campanhas() {
 
   const openCreate = () => {
     setEditingCampaign(null);
-    setForm({ name: "", description: "", intervalSeconds: 5 });
+    setForm({ name: "", intervalSeconds: 5 });
     setDialogOpen(true);
   };
 
@@ -171,7 +187,6 @@ export default function Campanhas() {
     setEditingCampaign(campaign);
     setForm({
       name: campaign.name,
-      description: campaign.description || "",
       intervalSeconds: campaign.intervalSeconds,
     });
     setDialogOpen(true);
@@ -182,6 +197,16 @@ export default function Campanhas() {
     setSelectedExtensions((campaign.extensions || []).map((e) => String(e.id)));
     setSelectedVoipLines((campaign.voipLines || []).map((l) => String(l.id)));
     setCsvFile(null);
+    setAssignFeedback(null);
+    // Abre na primeira etapa que ainda falta.
+    const missing = missingFor(campaign);
+    setAssignTab(
+      missing.includes("contatos") || !missing.length
+        ? "phones"
+        : missing.includes("ramais")
+          ? "extensions"
+          : "voiplines",
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -195,15 +220,22 @@ export default function Campanhas() {
         });
         showFeedback("success", "Campanha atualizada.");
       } else {
-        await createCampaign({
+        const created = await createCampaign({
           name: form.name,
           intervalSeconds: form.intervalSeconds,
         });
-        showFeedback("success", "Campanha criada.");
+        setDialogOpen(false);
+        // Próximo passo natural: configurar contatos, ramais e linha.
+        openAssign({ ...created, contacts: [], extensions: [], voipLines: [] });
+        setAssignFeedback({
+          type: "success",
+          message: "Campanha criada. Agora adicione os contatos, os ramais e a linha.",
+        });
+        return;
       }
       setDialogOpen(false);
     } catch (err) {
-      showFeedback("error", (err?.response?.data?.message ?? err?.response?.data?.error) || "Erro ao salvar.");
+      showFeedback("error", apiError(err, "Erro ao salvar."));
     } finally {
       setLoading(false);
     }
@@ -216,8 +248,8 @@ export default function Campanhas() {
       await deleteCampaign(deleteDialog.id);
       setDeleteDialog(null);
       showFeedback("success", "Campanha removida.");
-    } catch {
-      showFeedback("error", "Erro ao remover.");
+    } catch (err) {
+      showFeedback("error", apiError(err, "Erro ao remover."));
     } finally {
       setLoading(false);
     }
@@ -227,9 +259,9 @@ export default function Campanhas() {
     setLoading(true);
     try {
       await startCampaign(id);
-      showFeedback("success", "Campanha iniciada.");
+      showFeedback("success", "Campanha iniciada — acompanhe no relatório.");
     } catch (err) {
-      showFeedback("error", (err?.response?.data?.message ?? err?.response?.data?.error) || "Erro ao iniciar.");
+      showFeedback("error", apiError(err, "Erro ao iniciar."));
     } finally {
       setLoading(false);
     }
@@ -240,9 +272,9 @@ export default function Campanhas() {
     setLoading(true);
     try {
       await assignExtensions(assignDialog.campaign.id, selectedExtensions);
-      showFeedback("success", "Ramais associados.");
-    } catch {
-      showFeedback("error", "Erro ao associar ramais.");
+      setAssignFeedback({ type: "success", message: "Ramais salvos." });
+    } catch (err) {
+      setAssignFeedback({ type: "error", message: apiError(err, "Erro ao salvar ramais.") });
     } finally {
       setLoading(false);
     }
@@ -253,9 +285,9 @@ export default function Campanhas() {
     setLoading(true);
     try {
       await assignVoipLines(assignDialog.campaign.id, selectedVoipLines);
-      showFeedback("success", "Linhas VoIP associadas.");
-    } catch {
-      showFeedback("error", "Erro ao associar linhas.");
+      setAssignFeedback({ type: "success", message: "Linhas salvas." });
+    } catch (err) {
+      setAssignFeedback({ type: "error", message: apiError(err, "Erro ao salvar linhas.") });
     } finally {
       setLoading(false);
     }
@@ -265,11 +297,16 @@ export default function Campanhas() {
     if (!assignDialog?.campaign || !csvFile) return;
     setLoading(true);
     try {
-      await uploadPhones(assignDialog.campaign.id, csvFile);
+      const { total, totalInvalid } = await uploadPhones(assignDialog.campaign.id, csvFile);
       setCsvFile(null);
-      showFeedback("success", "Lista enviada.");
-    } catch {
-      showFeedback("error", "Erro ao enviar lista.");
+      setAssignFeedback({
+        type: "success",
+        message:
+          `${total} contato${total === 1 ? "" : "s"} importado${total === 1 ? "" : "s"}` +
+          (totalInvalid ? ` — ${totalInvalid} linha${totalInvalid === 1 ? "" : "s"} ignorada${totalInvalid === 1 ? "" : "s"} (número inválido).` : "."),
+      });
+    } catch (err) {
+      setAssignFeedback({ type: "error", message: apiError(err, "Erro ao enviar lista.") });
     } finally {
       setLoading(false);
     }
@@ -326,34 +363,56 @@ export default function Campanhas() {
             <TableHeader>
               <TableRow>
                 <TableHead>Nome</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>Situação</TableHead>
                 <TableHead>Contatos</TableHead>
-                <TableHead>Linhas VoIP</TableHead>
-                <TableHead className="text-right pr-32">Ações</TableHead>
+                <TableHead>Ramais</TableHead>
+                <TableHead>Linha</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {campaigns.length === 0 ? (
                 <TableRow>
                   <TableCell
-                    colSpan={5}
+                    colSpan={6}
                     className="text-center text-muted-foreground py-8"
                   >
-                    Nenhuma campanha cadastrada.
+                    Nenhuma campanha ainda. Crie uma e depois adicione a lista
+                    de contatos, os ramais que vão atender e a linha.
                   </TableCell>
                 </TableRow>
               ) : (
-                campaigns.map((campaign) => (
+                campaigns.map((campaign) => {
+                  const missing = missingFor(campaign);
+                  const status =
+                    CAMPAIGN_STATUS[campaign.status ?? "pending"] ??
+                    CAMPAIGN_STATUS.pending;
+                  const countCell = (n: number, key: string) =>
+                    n > 0 ? (
+                      n
+                    ) : (
+                      <button
+                        onClick={() => openAssign(campaign)}
+                        className="text-xs text-amber-400 hover:underline"
+                        title="Clique para configurar"
+                      >
+                        {key === "linha" ? "Falta" : "Nenhum"}
+                      </button>
+                    );
+                  return (
                   <TableRow key={campaign.id}>
                     <TableCell className="font-medium">
                       {campaign.name}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={statusVariant(campaign.status)}>
-                        {campaign.status || "inactive"}
-                      </Badge>
+                      <Badge variant={status.variant}>{status.label}</Badge>
                     </TableCell>
-                    <TableCell>{campaign.contacts?.length || 0}</TableCell>
+                    <TableCell>
+                      {countCell(campaign.contacts?.length || 0, "contatos")}
+                    </TableCell>
+                    <TableCell>
+                      {countCell(campaign.extensions?.length || 0, "ramais")}
+                    </TableCell>
                     <TableCell>
                       {(campaign.voipLines || []).length > 0 ? (
                         <div className="flex flex-wrap gap-1">
@@ -368,9 +427,7 @@ export default function Campanhas() {
                           ))}
                         </div>
                       ) : (
-                        <span className="text-muted-foreground text-sm">
-                          {t("campaigns.noLine")}
-                        </span>
+                        countCell(0, "linha")
                       )}
                     </TableCell>
                     <TableCell className="text-right">
@@ -378,7 +435,28 @@ export default function Campanhas() {
                         <Button
                           size="sm"
                           variant="outline"
-                          title="Ver relatório"
+                          onClick={() => openAssign(campaign)}
+                        >
+                          <Users className="mr-1.5 h-3.5 w-3.5" />
+                          Configurar
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => handleStart(campaign.id)}
+                          disabled={loading || missing.length > 0}
+                          title={
+                            missing.length
+                              ? `Falta: ${missing.join(", ")}`
+                              : t("campaigns.start")
+                          }
+                        >
+                          <Play className="mr-1.5 h-3.5 w-3.5" />
+                          Iniciar
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          title="Ver resultado"
                           onClick={() => openReport(campaign)}
                         >
                           <BarChart2 className="h-3.5 w-3.5" />
@@ -386,22 +464,7 @@ export default function Campanhas() {
                         <Button
                           size="sm"
                           variant="outline"
-                          title="Associar ramais / linhas / contatos"
-                          onClick={() => openAssign(campaign)}
-                        >
-                          <Users className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleStart(campaign.id)}
-                          disabled={loading}
-                          title={t("campaigns.start")}
-                        >
-                          <Play className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
+                          title="Renomear"
                           onClick={() => openEdit(campaign)}
                         >
                           <Pencil className="h-3.5 w-3.5" />
@@ -409,6 +472,7 @@ export default function Campanhas() {
                         <Button
                           size="sm"
                           variant="outline"
+                          title="Excluir"
                           className="text-destructive hover:bg-destructive/10"
                           onClick={() => setDeleteDialog(campaign)}
                         >
@@ -417,7 +481,8 @@ export default function Campanhas() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))
+                  );
+                })
               )}
             </TableBody>
           </Table>
@@ -446,16 +511,6 @@ export default function Campanhas() {
                 required
               />
             </div>
-            <div className="space-y-1">
-              <Label>Descrição</Label>
-              <Input
-                value={form.description}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, description: e.target.value }))
-                }
-                placeholder="Opcional"
-              />
-            </div>
             <DialogFooter>
               <Button
                 type="button"
@@ -482,28 +537,46 @@ export default function Campanhas() {
             <DialogTitle>
               Configurar campanha: {assignDialog?.campaign?.name}
             </DialogTitle>
+            <DialogDescription>
+              Para iniciar, a campanha precisa dos três itens abaixo.
+            </DialogDescription>
           </DialogHeader>
-          <Tabs defaultValue="extensions">
+          {assignFeedback && (
+            <Alert variant={assignFeedback.type === "error" ? "destructive" : "default"}>
+              {assignFeedback.type === "success" ? (
+                <CheckCircle2 className="h-4 w-4" />
+              ) : (
+                <AlertCircle className="h-4 w-4" />
+              )}
+              <AlertDescription>{assignFeedback.message}</AlertDescription>
+            </Alert>
+          )}
+          <Tabs value={assignTab} onValueChange={setAssignTab}>
             <TabsList className="w-full gap-4 mb-4">
+              <TabsTrigger value="phones" className="flex-1">
+                <Upload className="mr-1.5 h-3.5 w-3.5" />
+                1. Contatos
+              </TabsTrigger>
               <TabsTrigger value="extensions" className="flex-1">
                 <Phone className="mr-1.5 h-3.5 w-3.5" />
-                Ramais
+                2. Ramais
               </TabsTrigger>
               <TabsTrigger value="voiplines" className="flex-1">
                 <Megaphone className="mr-1.5 h-3.5 w-3.5" />
-                Linhas VoIP
-              </TabsTrigger>
-              <TabsTrigger value="phones" className="flex-1">
-                <Upload className="mr-1.5 h-3.5 w-3.5" />
-                Contatos CSV
+                3. Linha
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="extensions" className="space-y-3 pt-2">
               <p className="text-sm text-muted-foreground">
-                Selecione os ramais para esta campanha:
+                Quem vai atender as ligações quando o cliente atender:
               </p>
               <div className="max-h-52 overflow-y-auto space-y-1 border rounded-md p-2">
+                {extensions.length === 0 && (
+                  <p className="text-xs text-muted-foreground p-2">
+                    Nenhum ramal cadastrado — crie em Ramais.
+                  </p>
+                )}
                 {extensions.map((ext) => (
                   <label
                     key={ext.id}
@@ -530,9 +603,14 @@ export default function Campanhas() {
 
             <TabsContent value="voiplines" className="space-y-3 pt-2">
               <p className="text-sm text-muted-foreground">
-                Selecione as linhas VoIP para esta campanha:
+                Por qual linha telefônica o sistema vai ligar:
               </p>
               <div className="max-h-52 overflow-y-auto space-y-1 border rounded-md p-2">
+                {voipLines.length === 0 && (
+                  <p className="text-xs text-muted-foreground p-2">
+                    Nenhuma linha cadastrada — cadastre em Linhas telefônicas.
+                  </p>
+                )}
                 {voipLines.map((line) => (
                   <label
                     key={line.id}
@@ -543,7 +621,7 @@ export default function Campanhas() {
                       checked={selectedVoipLines.includes(String(line.id))}
                       onChange={() => toggleVoipLine(String(line.id))}
                     />
-                    {line.name} — {line.host}:{line.port}
+                    {line.name} — {line.host}
                   </label>
                 ))}
               </div>
@@ -553,17 +631,23 @@ export default function Campanhas() {
                 className="w-full"
               >
                 {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Salvar linhas VoIP
+                Salvar linha
               </Button>
             </TabsContent>
 
             <TabsContent value="phones" className="space-y-3 pt-2">
               <p className="text-sm text-muted-foreground">
-                Envie um arquivo CSV com coluna{" "}
+                Envie uma planilha salva como <strong>CSV</strong> (no Excel:
+                Arquivo → Salvar como → CSV) com uma coluna{" "}
                 <code className="text-xs bg-muted px-1 py-0.5 rounded">
                   telefone
                 </code>
-                :
+                , um número por linha, com DDD. Ex.: 11999990000.
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Contatos já na campanha:{" "}
+                {campaigns.find((c) => c.id === assignDialog?.campaign?.id)
+                  ?.contacts?.length ?? 0}
               </p>
               <input
                 type="file"

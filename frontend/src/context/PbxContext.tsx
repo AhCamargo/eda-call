@@ -184,9 +184,10 @@ export const PbxProvider: FC<PbxProviderProps> = ({
 
   const createCampaign = async (
     payload: CreateCampaignPayload,
-  ): Promise<void> => {
-    await api.post("/campaigns", payload);
+  ): Promise<Campaign> => {
+    const res = await api.post("/campaigns", payload);
     await fetchAll();
+    return res.data;
   };
 
   const updateCampaign = async (
@@ -225,11 +226,12 @@ export const PbxProvider: FC<PbxProviderProps> = ({
   const uploadPhones = async (
     campaignId: string,
     file: File,
-  ): Promise<void> => {
+  ): Promise<{ total: number; totalInvalid: number }> => {
     const formData = new FormData();
     formData.append("file", file);
-    await api.post(`/campaigns/${campaignId}/upload-phones`, formData);
+    const res = await api.post(`/campaigns/${campaignId}/upload-phones`, formData);
     await fetchAll();
+    return { total: res.data?.total ?? 0, totalInvalid: res.data?.totalInvalid ?? 0 };
   };
 
   const startCampaign = async (campaignId: string): Promise<void> => {
