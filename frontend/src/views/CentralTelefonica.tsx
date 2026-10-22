@@ -5,7 +5,6 @@ import {
   Plus,
   Pencil,
   Trash2,
-  RefreshCw,
   ChevronDown,
   ChevronUp,
   Settings2,
@@ -39,6 +38,7 @@ import {
 } from "@/components/ui/table";
 import api from "../api";
 import { usePbx } from "../context/PbxContext";
+import RefreshButton from "../components/RefreshButton";
 import type { Extension } from "../types";
 
 /* ── Types ─────────────────────────────────────────────────────────── */
@@ -850,15 +850,7 @@ export default function CentralTelefonica() {
           </p>
         </div>
         <div className="flex gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={load}
-            disabled={loading}
-            title="Recarregar"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </Button>
+          <RefreshButton onRefresh={load} loading={loading} />
           {canEdit && (
             <Button onClick={() => setDialogIvr("new")} className="gap-2">
               <Plus className="h-4 w-4" /> Nova central

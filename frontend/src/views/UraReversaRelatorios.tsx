@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import api from '../api';
 import { AuthDownloadButton } from '../components/AuthAudio';
+import RefreshButton from '../components/RefreshButton';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,15 +45,21 @@ const resolveRecordingUrl = (path) => {
 export default function UraReversaRelatorios() {
   const [items, setItems] = useState<UraReportItem[]>([]);
 
-  useEffect(() => {
+  const load = () =>
     api.get('/reports/ura-reverse').then((res) => setItems(res.data || [])).catch(() => {});
+
+  useEffect(() => {
+    load();
   }, []);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <BarChart2 className="h-5 w-5" />
-        <h1 className="text-2xl font-semibold">Relatórios URA Reversa</h1>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <BarChart2 className="h-5 w-5" />
+          <h1 className="text-2xl font-semibold">Relatórios URA Reversa</h1>
+        </div>
+        <RefreshButton onRefresh={load} />
       </div>
 
       <Card>

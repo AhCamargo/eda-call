@@ -3,6 +3,7 @@ import type { Campaign, CampaignStats, CallLogEntry } from "../types";
 import { useTranslation } from "react-i18next";
 import { usePbx } from "../context/PbxContext";
 import api from "../api";
+import RefreshButton from "../components/RefreshButton";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -533,10 +534,17 @@ export default function Campanhas() {
             pessoa atende, passa a ligação para um atendente livre.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="mr-2 h-4 w-4" />
-          {t("campaigns.createCampaign")}
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <RefreshButton
+            onRefresh={() =>
+              Promise.all([fetchAll(), expandedId ? loadDetail(expandedId) : null])
+            }
+          />
+          <Button onClick={openCreate}>
+            <Plus className="mr-2 h-4 w-4" />
+            {t("campaigns.createCampaign")}
+          </Button>
+        </div>
       </div>
 
       {feedback && (

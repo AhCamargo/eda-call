@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api";
 import { usePbx } from "../context/PbxContext";
+import RefreshButton from "../components/RefreshButton";
 import { audioToTelephonyWav } from "../lib/audioToTelephonyWav";
 import { AuthAudio, AuthDownloadButton } from "../components/AuthAudio";
 
@@ -387,10 +388,13 @@ export default function UraReversa() {
             atendente).
           </p>
         </div>
-        <Button onClick={() => { resetCreate(); setShowCreate(true); }}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nova Campanha
-        </Button>
+        <div className="flex gap-2 shrink-0">
+          <RefreshButton onRefresh={() => fetchAll().catch(() => showMsg(false, "Não foi possível atualizar."))} />
+          <Button onClick={() => { resetCreate(); setShowCreate(true); }}>
+            <Plus className="h-4 w-4 mr-2" />
+            Nova Campanha
+          </Button>
+        </div>
       </div>
 
       {feedback && (

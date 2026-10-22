@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { usePbx } from "../context/PbxContext";
 import { AuthAudio, AuthDownloadButton } from "../components/AuthAudio";
+import RefreshButton from "../components/RefreshButton";
 import type { Recording } from "../types";
 import { API_BASE } from "../api";
 
@@ -83,7 +84,7 @@ const formatDate = (dateStr) => {
 const basename = (path) => path?.split("/").pop() || path || "—";
 
 export default function Gravacoes() {
-  const { reportRecordings, extensions, deleteRecording } = usePbx();
+  const { reportRecordings, extensions, deleteRecording, fetchAll } = usePbx();
 
   const [filterExtId, setFilterExtId] = useState("all");
   const [search, setSearch] = useState("");
@@ -144,9 +145,12 @@ export default function Gravacoes() {
           <Mic size={20} className="text-red-400" />
           <h1 className="text-2xl font-bold tracking-tight">Gravações</h1>
         </div>
-        <div className="flex items-center gap-2 text-xs text-zinc-500">
-          <Clock size={13} />
-          Duração total: {formatDuration(totalDuration)}
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-2 text-xs text-zinc-500">
+            <Clock size={13} />
+            Duração total: {formatDuration(totalDuration)}
+          </span>
+          <RefreshButton onRefresh={fetchAll} />
         </div>
       </div>
 
