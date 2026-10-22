@@ -44,10 +44,15 @@ eda-call/
 ├── backend/
 │   └── src/
 │       ├── server.ts                ← bootstrap: DB → serviços → rotas
-│       ├── routes.ts                ← TODOS os endpoints REST (~2800 linhas, monolítico)
-│       ├── db.ts                    ← modelos Sequelize + syncDatabase() com migrations inline
+│       ├── routes.ts                ← monta os routers de domínio + middleware de erro
+│       ├── routers/                 ← um router por domínio (extensions, voipLines, campaigns…)
+│       ├── middleware/              ← auth.ts (verifyToken/requireAdmin), rateLimit.ts
+│       ├── utils/network.ts         ← isInternalRequest + assinatura HMAC do callback da URA
+│       ├── db.ts                    ← modelos Sequelize + syncDatabase()
+│       ├── migrator.ts              ← Umzug: roda migrations/*.sql em ordem (tabela SequelizeMeta)
+│       ├── migrations/              ← NNN-descricao.sql (forward-only)
 │       ├── ami.ts                   ← originateCall, originateReverseIvr, runCommand
-│       ├── auth.ts                  ← JWT login + verifyToken middleware
+│       ├── auth.ts                  ← JWT login + verifyToken (checa users.tokenVersion)
 │       ├── config.ts                ← env vars centralizadas
 │       └── services/
 │           ├── asteriskProvisioning.ts  ← escrita em .conf via upsertNamedBlock
@@ -64,6 +69,7 @@ eda-call/
 │       ├── context/PbxContext.tsx   ← Socket.IO + estado global SIP
 │       ├── hooks/useSipClient.ts    ← hook SIP.js (WebRTC)
 │       ├── views/                   ← páginas (uma por módulo)
+│       ├── components/PrimeirosPassos.tsx ← checklist de configuração inicial (admin)
 │       └── components/ui/           ← componentes shadcn/ui
 ├── monitor/                         ← Zabbix + Grafana (docker-compose separado)
 ├── deploy/fail2ban/                 ← config fail2ban para SIP
@@ -104,20 +110,23 @@ eda-call/
 
 **Adicionar rota nova:**
 ```typescript
-// em routes.ts, antes do último return router
-router.get("/meu-endpoint", verifyToken, async (req, res) => { ... });
-// Usar asyncHandler para rotas com múltiplas awaits que podem jogar erro
-router.post("/meu-endpoint", verifyToken, asyncHandler(async (req, res) => { ... }));
+// no router do domínio em routers/<dominio>.router.ts
+// verifyToken já é aplicado em routes.ts para os routers montados depois dele;
+// checagem de papel é responsabilidade de cada rota:
+router.post("/meu-endpoint", requireAdmin, actionLimiter, async (req, res) => { ... });
+// express-async-errors está ativo: erros lançados em handlers async caem no
+// middleware de erro de routes.ts (5xx → mensagem genérica, detalhe só no log)
 ```
+Ações sensíveis (troca de senha, provisionamento, início de campanha, upload) usam `actionLimiter`.
+Toda rota nova precisa de entrada no teste `src/test/authzMatrix.test.ts`.
 
 **Adicionar modelo / campo novo ao banco:**
-```typescript
-// em db.ts → dentro de syncDatabase(), nunca fora dela
-await sequelize.query(
-  `ALTER TABLE "MinhaTabela" ADD COLUMN IF NOT EXISTS "meuCampo" VARCHAR(255) DEFAULT NULL`
-).catch(() => {});
-// Sempre com IF NOT EXISTS. Nunca alterar schema existente direto.
+```sql
+-- novo arquivo backend/src/migrations/NNN-descricao.sql (próximo número livre)
+ALTER TABLE "MinhaTabela" ADD COLUMN IF NOT EXISTS "meuCampo" VARCHAR(255) DEFAULT NULL;
 ```
+Também declarar o campo no modelo em `db.ts`. Migrations são forward-only e
+idempotentes (`IF NOT EXISTS`); nunca editar uma migration já publicada.
 
 **Provisionar Asterisk (SIP / dialplan / fila):**
 ```typescript
@@ -154,7 +163,14 @@ const { data } = await api.get("/meu-endpoint");
 
 **Estado global e Socket.IO:** via `PbxContext` — não criar listeners Socket.IO avulsos nas views.
 
-**Temas:** MUI dark theme (`#0a0a0f` background, `#6c5ce7` primary). Não mudar paleta sem alinhar.
+**Erros da API:** o backend responde `{ message }` — nas views, ler `err.response.data.message`.
+
+**Linguagem da interface:** o operador é leigo em Asterisk. Toda tela começa com uma frase
+dizendo o que ela faz; termos técnicos (contexto, codec, peer, DID, .conf) ficam escondidos
+em "Ajustes técnicos" ou explicados em linguagem simples. Itens do menu têm `hint`.
+
+**Temas:** MUI dark theme (`#0c0e11` background, `#3d6bf5` primary, fonte IBM Plex Sans) —
+tokens em `styles.css` e tema MUI em `App.tsx`. Não mudar paleta sem alinhar.
 
 ---
 
@@ -166,8 +182,14 @@ const { data } = await api.get("/meu-endpoint");
 - `getAmiClient()` é chamado em vários serviços; só há uma conexão AMI ativa
 
 ### `backend/src/db.ts` → `syncDatabase()`
+- Ordem: `sequelize.sync()` primeiro, depois `migrator.up()` (Umzug) — inverter quebra banco novo
 - Migrations irreversíveis em produção — sempre `IF NOT EXISTS`, nunca `DROP` ou `ALTER TYPE` sem catch
-- Sequelize `.sync()` é chamado no final — novos modelos aparecem automaticamente
+
+### Endpoints internos (`/internal/ura/log`, `/metrics`)
+- Aceitos só de IP privado **sem** headers de proxy (`isInternalRequest`) — atrás do Traefik do
+  Coolify toda requisição pública chega com IP privado
+- `/internal/ura/log` exige `?sig=` (HMAC do `uraRef`), que `originateReverseIvr` anexa à
+  `URA_CALLBACK_URL`. O dialplan só repassa a URL — não remover o `sig` ao mexer no Originate
 
 ### `asterisk/config/sip_custom.conf`
 - Gerenciado dinamicamente pelo backend — **nunca editar manualmente em produção**
@@ -192,11 +214,10 @@ const { data } = await api.get("/meu-endpoint");
 
 ## Dívidas técnicas conhecidas
 
-1. **`routes.ts` monolítico (~2800 linhas)** — refatorar por domínio: `extensions.router.ts`, `campaigns.router.ts`, etc.
-2. **Zero testes** — nenhum teste unitário ou de integração. Prioridade para: `campaignRunner`, `uraReverseWorker`, `asteriskProvisioning`
-3. **`asyncHandler` inconsistente** — algumas rotas não usam e podem engolir erros silenciosamente
-4. **Sem rate limiting** — `/auth/login` e endpoints públicos expostos a brute force
-5. **Migrations inline em `syncDatabase()`** — migrar para Sequelize migrations formais para ter rollback
+1. **Cobertura de testes parcial** — Vitest no backend (`npm test`), Cypress no frontend; faltam testes de `asteriskProvisioning` e das views
+2. **Telas grandes** (`CentralTelefonica`, `Campanhas`, `UraReversa`, `Ramais`, 750–950 linhas) — candidatas a dividir em componentes
+3. **i18n parcial** — a maior parte dos textos está fixa em pt-BR nas views
+4. **`sprintf-js` (via CLI do umzug)** — alerta moderado sem versão corrigida; não alcançável pelo app
 
 ---
 
@@ -213,6 +234,7 @@ ASTERISK_RECORDINGS_DIR
 ASTERISK_SIP_CUSTOM_FILE
 ASTERISK_EXTENSIONS_CUSTOM_FILE
 ASTERISK_QUEUES_CUSTOM_FILE
+CORS_ORIGIN           # opcional — origens permitidas (vírgula); padrão "*"
 ```
 
 ---
@@ -243,7 +265,9 @@ docker compose up --build
 
 **Produção (Coolify):** `docker-compose.prod.yml` + variáveis de ambiente no painel Coolify.
 
-**Credenciais padrão:** `admin` / `123456` (trocar no primeiro acesso em produção).
+**Credenciais iniciais:** o `install.sh` gera uma senha aleatória para o `admin` e a exibe ao final.
+
+**Backup:** `install.sh` agenda `edacall-backup` diário (03:00); restaurar com `edacall-restore <dump.sql.gz>`.
 
 **Atualização em produção:** `./update.sh`
 
