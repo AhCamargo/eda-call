@@ -1,6 +1,7 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { usePbx } from "../context/PbxContext";
-import type { Extension, CreateExtensionPayload } from "../types";
+import api from "../api";
+import type { Extension, CreateExtensionPayload, User } from "../types";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +69,13 @@ const STATUS_LABEL = {
   in_campaign: "Em campanha",
 };
 
-const EMPTY_FORM = { number: "", name: "", sipPassword: "", voipLineId: "" };
+const EMPTY_FORM = {
+  number: "",
+  name: "",
+  sipPassword: "",
+  voipLineId: "",
+  ownerUserId: "",
+};
 
 function InputField({
   label,
@@ -136,6 +143,16 @@ export default function Ramais() {
     type: string;
   } | null>(null);
 
+  // Usuários para atribuir dono do ramal (hot-desking se não definido —
+  // ver achado F1 da auditoria de segurança)
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    api
+      .get("/users")
+      .then((res) => setUsers(res.data))
+      .catch(() => setUsers([]));
+  }, []);
+
   // UI states
   const [revealedId, setRevealedId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{
@@ -184,6 +201,7 @@ export default function Ramais() {
       name: ext.name,
       sipPassword: "",
       voipLineId: ext.voipLineId ? String(ext.voipLineId) : "",
+      ownerUserId: ext.ownerUserId ? String(ext.ownerUserId) : "",
     });
     setEditOpen(true);
   };
@@ -197,6 +215,7 @@ export default function Ramais() {
         number: editForm.number,
         name: editForm.name,
         voipLineId: editForm.voipLineId || undefined,
+        ownerUserId: editForm.ownerUserId || null,
       };
       if (editForm.sipPassword) payload.sipPassword = editForm.sipPassword;
       await updateExtension(editTarget.id, payload);
@@ -292,9 +311,17 @@ export default function Ramais() {
   return (
     <div className="space-y-4 text-zinc-100 max-w-6xl">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Ramais</h1>
-        <div className="flex gap-2">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Ramais</h1>
+          <p className="text-sm text-zinc-500 mt-1 max-w-2xl">
+            Cada ramal é um telefone da equipe — no navegador (tela "Atender
+            ligações"), num aparelho IP ou num aplicativo de celular. Ramais
+            ligam entre si pelo número; para ligar para fora, escolha uma
+            linha telefônica.
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -358,7 +385,7 @@ export default function Ramais() {
                 <TableHead className="text-zinc-400">Número</TableHead>
                 <TableHead className="text-zinc-400">Nome</TableHead>
                 <TableHead className="text-zinc-400">Status</TableHead>
-                <TableHead className="text-zinc-400">Senha SIP</TableHead>
+                <TableHead className="text-zinc-400">Senha do ramal</TableHead>
                 <TableHead className="text-zinc-400 text-right">
                   Ações
                 </TableHead>
@@ -465,7 +492,7 @@ export default function Ramais() {
                             </Button>
                           </TooltipTrigger>
                           <TooltipContent>
-                            Reprovisionar no Asterisk
+                            Reaplicar configuração
                           </TooltipContent>
                         </Tooltip>
 
@@ -515,8 +542,8 @@ export default function Ramais() {
               Novo ramal
             </DialogTitle>
             <DialogDescription className="text-zinc-500">
-              Preencha os dados. A senha SIP é gerada automaticamente se não
-              informada.
+              Só número e nome são obrigatórios. A senha é gerada
+              automaticamente se você deixar em branco.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate}>
@@ -536,7 +563,7 @@ export default function Ramais() {
                 required
               />
               <InputField
-                label="Senha SIP"
+                label="Senha do ramal"
                 value={createForm.sipPassword}
                 onChange={(v) =>
                   setCreateForm((p) => ({ ...p, sipPassword: v }))
@@ -546,7 +573,7 @@ export default function Ramais() {
               />
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-zinc-300">
-                  Linha VoIP (outbound)
+                  Linha para ligar para fora
                 </label>
                 <Select
                   value={createForm.voipLineId || "__none__"}
@@ -580,9 +607,48 @@ export default function Ramais() {
                 </Select>
                 {voipLines.length === 0 && (
                   <p className="text-xs text-amber-400 flex items-center gap-1">
-                    <Info size={11} /> Sem linhas VoIP cadastradas.
+                    <Info size={11} /> Nenhuma linha cadastrada — o ramal só ligará para outros ramais.
                   </p>
                 )}
+              </div>
+              <div className="space-y-1.5 col-span-2">
+                <label className="text-sm font-medium text-zinc-300">
+                  Pessoa responsável (opcional)
+                </label>
+                <Select
+                  value={createForm.ownerUserId || "__none__"}
+                  onValueChange={(v) =>
+                    setCreateForm((p) => ({
+                      ...p,
+                      ownerUserId: v === "__none__" ? "" : v,
+                    }))
+                  }
+                >
+                  <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
+                    <SelectValue placeholder="Livre — qualquer pessoa pode usar" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-zinc-800 border-zinc-700">
+                    <SelectItem
+                      value="__none__"
+                      className="text-zinc-400 focus:bg-zinc-700"
+                    >
+                      — Livre (qualquer usuário pode usar) —
+                    </SelectItem>
+                    {users.map((u) => (
+                      <SelectItem
+                        key={u.id}
+                        value={String(u.id)}
+                        className="text-zinc-100 focus:bg-zinc-700"
+                      >
+                        {u.username}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-zinc-500">
+                  Se definido, só esse usuário (ou admin/supervisor) consegue
+                  ver a senha deste ramal.
+                </p>
               </div>
             </div>
             <DialogFooter className="pt-4 gap-2">
@@ -630,7 +696,7 @@ export default function Ramais() {
               required
             />
             <InputField
-              label="Nova senha SIP"
+              label="Nova senha do ramal"
               value={editForm.sipPassword}
               onChange={(v) => setEditForm((p) => ({ ...p, sipPassword: v }))}
               placeholder="deixe em branco para manter a atual"
@@ -638,7 +704,7 @@ export default function Ramais() {
             />
             <div className="space-y-1.5">
               <label className="text-sm font-medium text-zinc-300">
-                Linha VoIP (outbound)
+                Linha para ligar para fora
               </label>
               <Select
                 value={editForm.voipLineId || "__none__"}
@@ -666,6 +732,41 @@ export default function Ramais() {
                       className="text-zinc-100 focus:bg-zinc-700"
                     >
                       {line.name} — {line.host}:{line.port}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium text-zinc-300">
+                Pessoa responsável (opcional)
+              </label>
+              <Select
+                value={editForm.ownerUserId || "__none__"}
+                onValueChange={(v) =>
+                  setEditForm((p) => ({
+                    ...p,
+                    ownerUserId: v === "__none__" ? "" : v,
+                  }))
+                }
+              >
+                <SelectTrigger className="bg-zinc-800 border-zinc-700 text-zinc-100">
+                  <SelectValue placeholder="Livre — qualquer pessoa pode usar" />
+                </SelectTrigger>
+                <SelectContent className="bg-zinc-800 border-zinc-700">
+                  <SelectItem
+                    value="__none__"
+                    className="text-zinc-400 focus:bg-zinc-700"
+                  >
+                    — Livre (qualquer usuário pode usar) —
+                  </SelectItem>
+                  {users.map((u) => (
+                    <SelectItem
+                      key={u.id}
+                      value={String(u.id)}
+                      className="text-zinc-100 focus:bg-zinc-700"
+                    >
+                      {u.username}
                     </SelectItem>
                   ))}
                 </SelectContent>

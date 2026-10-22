@@ -1,6 +1,6 @@
 import express, { Request, Response } from "express";
 import logger from "../logger";
-import { verifyToken } from "../middleware/auth";
+import { verifyToken, requireSupervisor } from "../middleware/auth";
 import {
   getDailyReport,
   getTimeline,
@@ -9,6 +9,9 @@ import {
 
 export const createAgentReportsRouter = () => {
   const router = express.Router();
+  // Produtividade de qualquer agente é dado sensível entre colegas —
+  // restringe toda a rota a admin/supervisor (achado F3 da auditoria).
+  router.use(requireSupervisor);
 
   // ── Relatórios de produtividade dos agentes ─────────────────────────────────
 

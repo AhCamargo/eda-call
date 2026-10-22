@@ -2,11 +2,12 @@ import express, { Request, Response } from "express";
 import { randomBytes } from "crypto";
 import { Server } from "socket.io";
 import config from "../config";
-import { Extension, VoipLine } from "../db";
+import { Extension, VoipLine, User } from "../db";
 import { upsertSipExtension, removeExtensionProvision } from "../services/asteriskProvisioning";
 import { originateCall } from "../ami";
 import { logStatusChange } from "../services/agentStatusLogger";
-import { verifyToken } from "../middleware/auth";
+import { verifyToken, requireAdmin } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 import {
   normalizeExtensionNumber,
   isValidExtensionNumber,
@@ -44,8 +45,26 @@ export const createExtensionsRouter = (io: Server) => {
     return Array.from(bytes, (b) => chars[b % chars.length]).join("");
   }
 
-  router.post("/extensions", async (req: Request, res: Response) => {
-    const { number, name, sipPassword, voipLineId } = req.body;
+  // Resolve e valida ownerUserId opcional (null = ramal livre para hot-desking)
+  const resolveOwnerUserId = async (
+    value: unknown,
+  ): Promise<number | null> => {
+    if (value === undefined || value === null || value === "") return null;
+    const id = Number(value);
+    if (!Number.isInteger(id)) {
+      throw Object.assign(new Error("ownerUserId inválido"), { status: 400 });
+    }
+    const owner = await User.findByPk(id);
+    if (!owner) {
+      throw Object.assign(new Error("Usuário dono do ramal não encontrado"), {
+        status: 400,
+      });
+    }
+    return id;
+  };
+
+  router.post("/extensions", requireAdmin, async (req: Request, res: Response) => {
+    const { number, name, sipPassword, voipLineId, ownerUserId } = req.body;
     const normalizedNumber = normalizeExtensionNumber(number);
 
     if (!isValidExtensionNumber(normalizedNumber)) {
@@ -57,6 +76,7 @@ export const createExtensionsRouter = (io: Server) => {
 
     // Gera senha aleatória se não for fornecida
     const password = sipPassword || generateRandomPassword();
+    const resolvedOwnerUserId = await resolveOwnerUserId(ownerUserId);
 
     // Salva ramal com senha persistida
     let extension: any;
@@ -67,6 +87,7 @@ export const createExtensionsRouter = (io: Server) => {
         password,
         status: "offline",
         voipLineId: voipLineId ? Number(voipLineId) : null,
+        ownerUserId: resolvedOwnerUserId,
       });
     } catch (error: any) {
       if (error.name === "SequelizeUniqueConstraintError") {
@@ -194,7 +215,7 @@ export const createExtensionsRouter = (io: Server) => {
     },
   );
 
-  router.patch("/extensions/:id", async (req: Request, res: Response) => {
+  router.patch("/extensions/:id", requireAdmin, async (req: Request, res: Response) => {
     const extension = (await Extension.findByPk(
       req.params.id as string,
     )) as any;
@@ -240,6 +261,11 @@ export const createExtensionsRouter = (io: Server) => {
         : null;
     }
 
+    // Atualiza o dono do ramal se fornecido (null = livre para hot-desking)
+    if (req.body?.ownerUserId !== undefined) {
+      extension.ownerUserId = await resolveOwnerUserId(req.body.ownerUserId);
+    }
+
     await extension.save();
 
     if (oldNumber !== nextNumber) {
@@ -274,7 +300,7 @@ export const createExtensionsRouter = (io: Server) => {
     });
   });
 
-  router.delete("/extensions/:id", async (req: Request, res: Response) => {
+  router.delete("/extensions/:id", requireAdmin, async (req: Request, res: Response) => {
     const extension = (await Extension.findByPk(
       req.params.id as string,
     )) as any;
@@ -290,6 +316,9 @@ export const createExtensionsRouter = (io: Server) => {
     return res.json({ message: "Ramal deletado com sucesso" });
   });
 
+  // Ramais sem ownerUserId continuam livres para hot-desking (qualquer
+  // usuário autenticado pode usá-los); ramais com dono só liberam as
+  // credenciais para o próprio dono ou para admin/supervisor. Ver F1.
   router.get(
     "/extensions/:id/webrtc-credentials",
     async (req: Request, res: Response) => {
@@ -299,6 +328,19 @@ export const createExtensionsRouter = (io: Server) => {
       if (!extension) {
         return res.status(404).json({ message: "Ramal não encontrado" });
       }
+
+      const role = req.user!.role;
+      const isElevated = role === "admin" || role === "supervisor";
+      if (
+        extension.ownerUserId &&
+        !isElevated &&
+        extension.ownerUserId !== req.user!.id
+      ) {
+        return res
+          .status(403)
+          .json({ message: "Este ramal pertence a outro usuário" });
+      }
+
       return res.json({
         extensionNumber: extension.number,
         password: extension.password,
@@ -309,6 +351,8 @@ export const createExtensionsRouter = (io: Server) => {
 
   router.post(
     "/extensions/:id/provision",
+    requireAdmin,
+    actionLimiter,
     async (req: Request, res: Response) => {
       const extension = (await Extension.findByPk(
         req.params.id as string,
@@ -354,6 +398,8 @@ export const createExtensionsRouter = (io: Server) => {
 
   router.post(
     "/extensions/provision-all",
+    requireAdmin,
+    actionLimiter,
     async (req: Request, res: Response) => {
       const extensions = (await Extension.findAll({
         order: [["number", "ASC"]],
@@ -377,6 +423,7 @@ export const createExtensionsRouter = (io: Server) => {
 
   router.post(
     "/calls/test-between-extensions",
+    requireAdmin,
     async (req: Request, res: Response) => {
       const { sourceExtensionId, targetExtensionId } = req.body || {};
 

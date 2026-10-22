@@ -19,6 +19,8 @@ import { createInboundIvrRouter } from "./routers/inboundIvr.router";
 import { createSettingsRouter } from "./routers/settings.router";
 import { createInboundRoutesRouter } from "./routers/inboundRoutes.router";
 import { createAgentReportsRouter } from "./routers/agentReports.router";
+import { createMetricsRouter } from "./routers/metrics.router";
+import { recordError5xx } from "./services/metricsCollector";
 
 export const createRoutes = (io: Server) => {
   const router = express.Router();
@@ -30,6 +32,7 @@ export const createRoutes = (io: Server) => {
   router.use(createSecurityRouter());
   router.use(createSupervisorRouter(io));
   router.use(createInternalRouter());
+  router.use(createMetricsRouter());
 
   // A partir daqui, todas as rotas exigem token (equivalente ao antigo
   // `router.use(verifyToken)` no meio do arquivo monolítico).
@@ -47,6 +50,7 @@ export const createRoutes = (io: Server) => {
   router.use(createInboundIvrRouter());
   router.use(createSettingsRouter());
   router.use(createInboundRoutesRouter());
+  router.use(createAgentReportsRouter());
 
   // ── Error middleware (captura erros de todos os handlers async via express-async-errors) ──
   router.use(
@@ -57,21 +61,19 @@ export const createRoutes = (io: Server) => {
       _next: express.NextFunction,
     ) => {
       const status = err?.status || err?.statusCode || 500;
+      if (status >= 500) recordError5xx();
       logger.error(`[API Error] ${req.method} ${req.path} — ${err?.message || err}`, {
         status,
         stack: err?.stack,
       });
+      // Erros 5xx podem carregar detalhes internos (SQL, caminhos, stack) —
+      // ficam só no log; o cliente recebe uma mensagem genérica.
       return res.status(status).json({
-        message: err?.message || "Erro interno do servidor",
+        message:
+          status >= 500 ? "Erro interno do servidor" : err?.message || "Requisição inválida",
       });
     },
   );
-
-  // NOTA: agent-reports é montado depois do middleware de erro acima,
-  // reproduzindo o comportamento original do arquivo monolítico — erros
-  // lançados por essas rotas não passam pelo formatador JSON customizado
-  // (caem no handler padrão do Express). Preservado intencionalmente.
-  router.use(createAgentReportsRouter());
 
   return router;
 };

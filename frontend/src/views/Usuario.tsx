@@ -242,9 +242,9 @@ export default function Usuario() {
 
             {myExt && (
               <>
-                <div className={`flex items-center justify-between px-3 py-2 rounded-md border ${STATUS_COLOR[myExt.status] ?? STATUS_COLOR.offline}`}>
+                <div className={`flex items-center justify-between px-3 py-2 rounded-md border ${(myExt.status && STATUS_COLOR[myExt.status]) || STATUS_COLOR.offline}`}>
                   <span className="text-sm font-medium">{myExt.number}</span>
-                  <span className="text-xs font-semibold">{STATUS_LABEL[myExt.status] ?? myExt.status}</span>
+                  <span className="text-xs font-semibold">{(myExt.status && STATUS_LABEL[myExt.status]) || myExt.status}</span>
                 </div>
 
                 {myExt.pauseReason && (

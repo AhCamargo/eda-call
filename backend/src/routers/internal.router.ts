@@ -1,18 +1,25 @@
 import express, { Request, Response } from "express";
-import config from "../config";
+import logger from "../logger";
 import { UraLog } from "../db";
 import { handleUraReverseDtmfEvent } from "../services/uraReverseWorker";
+import { isInternalRequest, isValidUraCallbackSignature } from "../utils/network";
+
+// Quem chama este endpoint é sempre o próprio Asterisk (via curl no
+// dialplan, extensions_custom.conf), rodando no mesmo host ou na mesma rede
+// Docker — nunca a internet pública. Em vez de uma chave compartilhada
+// (INTERNAL_API_KEY, removida a pedido), restringe por IP de origem:
+// loopback ou faixas privadas (RFC1918 / rede bridge do Docker), sem headers
+// de proxy, e exige a assinatura `?sig=` que o backend anexa à
+// URA_CALLBACK_URL ao originar a chamada (ver signUraCallback).
 
 export const createInternalRouter = () => {
   const router = express.Router();
 
   router.post("/internal/ura/log", async (req: Request, res: Response) => {
-    const configuredKey = config.internalApiKey;
-    if (configuredKey) {
-      const receivedKey = req.headers["x-internal-key"];
-      if (receivedKey !== configuredKey) {
-        return res.status(401).json({ message: "Chave interna inválida" });
-      }
+    const remoteAddress = req.socket.remoteAddress;
+    if (!isInternalRequest(req)) {
+      logger.warn(`[internal/ura/log] chamada rejeitada — origem fora da rede interna: ${remoteAddress}`);
+      return res.status(403).json({ message: "Acesso restrito à rede interna" });
     }
 
     const {
@@ -26,6 +33,11 @@ export const createInternalRouter = () => {
       audioPath = null,
       result = "pending",
     } = req.body || {};
+
+    if (!isValidUraCallbackSignature(uraRef, req.query.sig)) {
+      logger.warn(`[internal/ura/log] chamada rejeitada — assinatura inválida (uraRef=${uraRef})`);
+      return res.status(403).json({ message: "Assinatura inválida" });
+    }
 
     if (!phoneNumber) {
       return res.status(400).json({ message: "phoneNumber é obrigatório" });

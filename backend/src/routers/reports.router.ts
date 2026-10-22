@@ -13,6 +13,7 @@ import {
 } from "../db";
 import { toRecordingWebPath } from "../utils/routeHelpers";
 import { buildUraCampaignStats } from "./uraReverse.router";
+import { requireSupervisor } from "../middleware/auth";
 
 export const createReportsRouter = () => {
   const router = express.Router();
@@ -100,7 +101,9 @@ export const createReportsRouter = () => {
     res.json({ total: count, page, limit, data: rows });
   });
 
-  router.get("/reports/recordings", async (req: Request, res: Response) => {
+  // Gravações de chamadas de toda a empresa — restrito a admin/supervisor
+  // (achado F2 da auditoria; agentes não devem ouvir chamadas de colegas).
+  router.get("/reports/recordings", requireSupervisor, async (req: Request, res: Response) => {
     const page  = Math.max(1, Number(req.query.page)  || 1);
     const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
     const offset = (page - 1) * limit;

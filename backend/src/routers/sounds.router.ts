@@ -4,6 +4,7 @@ import path from "path";
 import multer from "multer";
 import config from "../config";
 import { verifyToken, requireAdmin } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 import { getAmiClient } from "../ami";
 
 const { asteriskSoundsDir } = config;
@@ -83,6 +84,7 @@ export const createSoundsRouter = () => {
     "/sounds/upload",
     verifyToken,
     requireAdmin,
+    actionLimiter,
     uploadIvr.single("audio"),
     async (req: Request, res: Response) => {
       if (!req.file) return res.status(400).json({ message: "Nenhum arquivo enviado" });

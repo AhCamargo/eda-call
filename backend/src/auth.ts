@@ -27,7 +27,7 @@ export const login = async (req: Request, res: Response) => {
   }
 
   const token = jwt.sign(
-    { id: u.id, role: u.role, username: u.username },
+    { id: u.id, role: u.role, username: u.username, tokenVersion: u.tokenVersion },
     config.jwtSecret,
     {
       expiresIn: "8h",
@@ -36,7 +36,7 @@ export const login = async (req: Request, res: Response) => {
   return res.json({ token });
 };
 
-export const verifyToken = (
+export const verifyToken = async (
   req: Request,
   res: Response,
   next: NextFunction,
@@ -48,14 +48,23 @@ export const verifyToken = (
     return res.status(403).json({ message: "Token ausente" });
   }
 
+  let decoded: { id: number; role: string; username: string; tokenVersion?: number };
   try {
-    req.user = jwt.verify(token, config.jwtSecret) as {
-      id: number;
-      role: string;
-      username: string;
-    };
-    return next();
+    decoded = jwt.verify(token, config.jwtSecret) as typeof decoded;
   } catch {
     return res.status(401).json({ message: "Token inválido" });
   }
+
+  // Consulta leve por PK (indexada) — permite revogar o token imediatamente
+  // ao trocar senha/papel ou deletar o usuário, em vez de esperar a
+  // expiração natural de até 8h (achado R3 da auditoria de segurança).
+  const user = (await User.findByPk(decoded.id)) as any;
+  if (!user || user.tokenVersion !== (decoded.tokenVersion ?? 0)) {
+    return res
+      .status(401)
+      .json({ message: "Sessão inválida ou expirada. Faça login novamente." });
+  }
+
+  req.user = { id: user.id, role: user.role, username: user.username };
+  return next();
 };

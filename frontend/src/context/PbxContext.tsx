@@ -64,8 +64,16 @@ export const PbxProvider: FC<PbxProviderProps> = ({
   const [reportUraLogs, setReportUraLogs] = useState<UraLog[]>([]);
   const [reportRecordings, setReportRecordings] = useState<Recording[]>([]);
 
+  // O backend agora exige um JWT válido no handshake do Socket.IO (ver
+  // achado F17 da auditoria de segurança) — sem `auth.token`, a conexão é
+  // recusada. PbxProvider só existe enquanto `token` é válido (App.tsx
+  // desmonta este provider inteiro no logout), então capturar o token uma
+  // única vez na criação do socket é seguro.
   const socket = useMemo<Socket>(
-    () => io(import.meta.env.VITE_API_URL || "http://localhost:5000"),
+    () =>
+      io(import.meta.env.VITE_API_URL || "http://localhost:5000", {
+        auth: { token },
+      }),
     [],
   );
 
@@ -73,38 +81,53 @@ export const PbxProvider: FC<PbxProviderProps> = ({
     setToken(token);
   }, [token]);
 
+  // Alguns endpoints agora são restritos a admin/supervisor (ver auditoria de
+  // segurança — achados F2/F3/F5/F6). Um papel `agent` recebe 403 nessas
+  // chamadas por design; isso não deve derrubar a sessão dele. Só um 401
+  // (token ausente/inválido) deve disparar onUnauthorized(); um 403 (token
+  // válido, papel sem permissão) apenas deixa aquele pedaço de estado vazio.
+  const safeGet = async (url: string): Promise<any | null> => {
+    try {
+      const res = await api.get(url);
+      return res.data;
+    } catch (err: any) {
+      if (err?.response?.status === 401) throw err;
+      return null;
+    }
+  };
+
   const fetchAll = async (): Promise<void> => {
     const [
-      dashboardRes,
-      extensionsRes,
-      voipLinesRes,
-      campaignsRes,
-      reportsRes,
-      byExtRes,
-      byCampaignRes,
-      uraRes,
-      recordingsRes,
+      dashboardData,
+      extensionsData,
+      voipLinesData,
+      campaignsData,
+      reportsData,
+      byExtData,
+      byCampaignData,
+      uraData,
+      recordingsData,
     ] = await Promise.all([
-      api.get("/dashboard"),
-      api.get("/extensions"),
-      api.get("/voip-lines"),
-      api.get("/campaigns"),
-      api.get("/reports/summary"),
-      api.get("/reports/calls-by-extension"),
-      api.get("/reports/calls-by-campaign"),
-      api.get("/reports/ura-logs?limit=500"),
-      api.get("/reports/recordings?limit=200"),
+      safeGet("/dashboard"),
+      safeGet("/extensions"),
+      safeGet("/voip-lines"),
+      safeGet("/campaigns"),
+      safeGet("/reports/summary"),
+      safeGet("/reports/calls-by-extension"),
+      safeGet("/reports/calls-by-campaign"),
+      safeGet("/reports/ura-logs?limit=500"),
+      safeGet("/reports/recordings?limit=200"),
     ]);
 
-    setStatusCounts(dashboardRes.data.statusCounts);
-    setExtensions(extensionsRes.data);
-    setVoipLines(voipLinesRes.data);
-    setCampaigns(campaignsRes.data);
-    setReports(reportsRes.data);
-    setReportCallsByExtension(byExtRes.data);
-    setReportCallsByCampaign(byCampaignRes.data);
-    setReportUraLogs(uraRes.data.data ?? uraRes.data);
-    setReportRecordings(recordingsRes.data.data ?? recordingsRes.data);
+    if (dashboardData) setStatusCounts(dashboardData.statusCounts);
+    setExtensions(extensionsData ?? []);
+    setVoipLines(voipLinesData ?? []);
+    setCampaigns(campaignsData ?? []);
+    if (reportsData) setReports(reportsData);
+    setReportCallsByExtension(byExtData ?? []);
+    setReportCallsByCampaign(byCampaignData ?? []);
+    setReportUraLogs(uraData?.data ?? uraData ?? []);
+    setReportRecordings(recordingsData?.data ?? recordingsData ?? []);
   };
 
   useEffect(() => {

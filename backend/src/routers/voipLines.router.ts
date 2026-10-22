@@ -1,16 +1,20 @@
 import express, { Request, Response } from "express";
 import { VoipLine } from "../db";
 import { upsertSipVoipLine, removeVoipLineProvision } from "../services/asteriskProvisioning";
+import { requireAdmin, requireSupervisor } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 
 export const createVoipLinesRouter = () => {
   const router = express.Router();
 
-  router.get("/voip-lines", async (_, res: Response) => {
+  // Leitura liberada para supervisor+ (precisam ver as linhas para montar
+  // campanhas); escrita restrita a admin — ver achado F5 da auditoria.
+  router.get("/voip-lines", requireSupervisor, async (_, res: Response) => {
     const lines = await VoipLine.findAll({ order: [["name", "ASC"]] });
     res.json(lines);
   });
 
-  router.post("/voip-lines", async (req: Request, res: Response) => {
+  router.post("/voip-lines", requireAdmin, async (req: Request, res: Response) => {
     const {
       name,
       username,
@@ -84,7 +88,7 @@ export const createVoipLinesRouter = () => {
     return res.status(201).json(line);
   });
 
-  router.patch("/voip-lines/:id", async (req: Request, res: Response) => {
+  router.patch("/voip-lines/:id", requireAdmin, async (req: Request, res: Response) => {
     const line = (await VoipLine.findByPk(req.params.id as string)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
@@ -188,7 +192,7 @@ export const createVoipLinesRouter = () => {
     return res.json(line);
   });
 
-  router.delete("/voip-lines/:id", async (req: Request, res: Response) => {
+  router.delete("/voip-lines/:id", requireAdmin, async (req: Request, res: Response) => {
     const line = (await VoipLine.findByPk(req.params.id as string)) as any;
     if (!line) {
       return res.status(404).json({ message: "Linha VoIP não encontrada" });
@@ -203,6 +207,8 @@ export const createVoipLinesRouter = () => {
 
   router.post(
     "/voip-lines/:id/provision",
+    requireAdmin,
+    actionLimiter,
     async (req: Request, res: Response) => {
       const line = (await VoipLine.findByPk(req.params.id as string)) as any;
       if (!line) {

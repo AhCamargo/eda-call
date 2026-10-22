@@ -2,6 +2,7 @@ import "express-async-errors"; // deve ser o primeiro import — patcha o Expres
 import http from "http";
 import express from "express";
 import cors from "cors";
+import jwt from "jsonwebtoken";
 import { Server } from "socket.io";
 import config from "./config";
 import logger from "./logger";
@@ -19,12 +20,33 @@ const bootstrap = async () => {
   await initStatusLogsFromCurrentState(); // fecha entradas abertas de restarts anteriores e abre novas
 
   const app = express();
-  app.use(cors());
+  app.use(cors({ origin: config.corsOrigin }));
   app.use(express.json());
-  app.use("/recordings", express.static(config.asteriskRecordingsDir));
+  // NUNCA servir /recordings como diretório estático: isso ignorava
+  // completamente a autenticação/autorização da rota
+  // GET /recordings/:filename (recordings.router.ts), expondo todas as
+  // gravações de chamada sem login (achado F2 da auditoria de segurança).
+  // O streaming autenticado é feito exclusivamente por essa rota.
 
   const server = http.createServer(app);
-  const io = new Server(server, { cors: { origin: "*" } });
+  const io = new Server(server, { cors: { origin: config.corsOrigin } });
+
+  // Exige um JWT válido no handshake — sem isso, qualquer cliente na rede
+  // podia conectar ao socket e receber eventos com dados sensíveis (ex.:
+  // telefones discados em campanhas de URA reversa) sem estar logado
+  // (achado F17 da auditoria de segurança).
+  io.use((socket, next) => {
+    const token =
+      socket.handshake.auth?.token ||
+      (socket.handshake.query?.token as string | undefined);
+    if (!token) return next(new Error("unauthorized"));
+    try {
+      jwt.verify(String(token), config.jwtSecret);
+      return next();
+    } catch {
+      return next(new Error("unauthorized"));
+    }
+  });
 
   io.on("connection", () => {});
 

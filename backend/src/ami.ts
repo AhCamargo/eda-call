@@ -1,8 +1,9 @@
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const AsteriskManager = require("asterisk-manager");
 import config from "./config";
+import { signUraCallback } from "./utils/network";
 
-const { ami: amiConfig, backendInternalUrl, internalApiKey } = config;
+const { ami: amiConfig, backendInternalUrl } = config;
 
 let amiClient: any = null;
 
@@ -121,8 +122,7 @@ export const originateReverseIvr = ({
     `APP_URA_PROMPT=${promptAudio || "custom/edacall-menu-ptbr"}`,
     `APP_DIGIT_TIMEOUT=${digitTimeoutSeconds || 5}`,
     `APP_URA_REF=${uraRef}`,
-    `URA_CALLBACK_URL=${backendInternalUrl}/internal/ura/log`,
-    `APP_INTERNAL_KEY=${internalApiKey}`,
+    `URA_CALLBACK_URL=${backendInternalUrl}/internal/ura/log?sig=${signUraCallback(uraRef)}`,
     ...Object.entries(extraVariables).map(
       ([key, value]) => `${key}=${value == null ? "" : value}`,
     ),

@@ -36,21 +36,37 @@ const muiTheme = createTheme({
   palette: {
     mode: "dark",
     primary: {
-      main: "#6c5ce7",
-      light: "#8577ed",
-      dark: "#5a4bd4",
+      main: "#3d6bf5",
+      light: "#8eaeff",
+      dark: "#2f5ce6",
       contrastText: "#ffffff",
     },
-    secondary: { main: "#00d2ff" },
-    info: { main: "#41D1FF" },
-    warning: { main: "#FFEA83" },
-    success: { main: "#00c853" },
-    background: { default: "#0a0a0f", paper: "#16161f" },
-    text: { primary: "#e4e4eb", secondary: "#9494a8" },
+    secondary: { main: "#8eaeff" },
+    info: { main: "#8eaeff" },
+    warning: { main: "#f5b941" },
+    success: { main: "#45d98f" },
+    error: { main: "#ff7a72" },
+    background: { default: "#0c0e11", paper: "#14171c" },
+    text: { primary: "#eceef2", secondary: "#a0a7b3" },
+    divider: "#252a32",
+  },
+  shape: { borderRadius: 6 },
+  typography: {
+    fontFamily: '"IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif',
+    button: { textTransform: "none", fontWeight: 500 },
   },
   components: {
     MuiCssBaseline: {
-      styleOverrides: { body: { backgroundColor: "#0a0a0f" } },
+      styleOverrides: { body: { backgroundColor: "#0c0e11" } },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: { backgroundImage: "none", border: "1px solid #252a32" },
+      },
+    },
+    MuiCard: {
+      defaultProps: { elevation: 0 },
+      styleOverrides: { root: { borderRadius: 10 } },
     },
   },
 });
@@ -182,6 +198,13 @@ function App(): JSX.Element {
     );
   }
 
+  // Espelha as restrições já aplicadas no backend (ver auditoria de
+  // segurança, achado F7): só ocultar o menu não é controle de acesso, mas
+  // ajuda a não confundir um agente com uma tela que ele não pode operar.
+  const isAdmin = user?.role === "admin";
+  const isSupervisorPlus = user?.role === "admin" || user?.role === "supervisor";
+  const fallback = <Navigate to={getDefaultRoute(user?.role)} replace />;
+
   return (
     <ThemeProvider theme={muiTheme}>
       <CssBaseline />
@@ -193,38 +216,38 @@ function App(): JSX.Element {
                 path="/"
                 element={<Navigate to={getDefaultRoute(user?.role)} replace />}
               />
-              <Route path="/callcenter" element={<CallCenter />} />
+              <Route path="/callcenter" element={isSupervisorPlus ? <CallCenter /> : fallback} />
               <Route path="/agent" element={<AgentView />} />
-              <Route path="/supervisor" element={<SupervisorView />} />
-              <Route path="/ramais" element={<Ramais />} />
+              <Route path="/supervisor" element={isSupervisorPlus ? <SupervisorView /> : fallback} />
+              <Route path="/ramais" element={isAdmin ? <Ramais /> : fallback} />
               <Route
                 path="/campanhas"
                 element={<Navigate to="/campanhas/discador" replace />}
               />
-              <Route path="/campanhas/discador" element={<Campanhas />} />
-              <Route path="/campanhas/ura-reversa" element={<UraReversa />} />
+              <Route path="/campanhas/discador" element={isSupervisorPlus ? <Campanhas /> : fallback} />
+              <Route path="/campanhas/ura-reversa" element={isSupervisorPlus ? <UraReversa /> : fallback} />
               <Route
                 path="/campanhas/ura-reversa/relatorios"
-                element={<UraReversaRelatorios />}
+                element={isSupervisorPlus ? <UraReversaRelatorios /> : fallback}
               />
-              <Route path="/central-telefonica" element={<CentralTelefonica />} />
-              <Route path="/filas" element={<Filas />} />
-              {user?.role === "admin" && (
+              <Route path="/central-telefonica" element={isSupervisorPlus ? <CentralTelefonica /> : fallback} />
+              <Route path="/filas" element={isSupervisorPlus ? <Filas /> : fallback} />
+              {isAdmin && (
                 <Route path="/audios-ura" element={<GerenciadorAudios />} />
               )}
-              {user?.role === "admin" && (
+              {isAdmin && (
                 <Route path="/seguranca" element={<Seguranca />} />
               )}
-              {user?.role === "admin" && (
+              {isAdmin && (
                 <Route path="/configuracoes" element={<Configuracoes />} />
               )}
-              <Route path="/linhas-voip" element={<LinhasVoip />} />
-              <Route path="/roteamento-entrada" element={<RoteamentoEntrada />} />
-              <Route path="/gravacoes" element={<Gravacoes />} />
-              <Route path="/relatorios" element={<Relatorios />} />
-              <Route path="/relatorios/produtividade" element={<RelatoriosProdutividade />} />
+              <Route path="/linhas-voip" element={isAdmin ? <LinhasVoip /> : fallback} />
+              <Route path="/roteamento-entrada" element={isSupervisorPlus ? <RoteamentoEntrada /> : fallback} />
+              <Route path="/gravacoes" element={isSupervisorPlus ? <Gravacoes /> : fallback} />
+              <Route path="/relatorios" element={isSupervisorPlus ? <Relatorios /> : fallback} />
+              <Route path="/relatorios/produtividade" element={isSupervisorPlus ? <RelatoriosProdutividade /> : fallback} />
               <Route path="/usuario" element={<Usuario />} />
-              {user?.role === "admin" && (
+              {isAdmin && (
                 <Route path="/usuarios" element={<Usuarios />} />
               )}
               <Route

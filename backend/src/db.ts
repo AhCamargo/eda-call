@@ -18,6 +18,10 @@ export const User = sequelize.define("User", {
     allowNull: false,
     defaultValue: "admin",
   },
+  // Incrementada para revogar todos os JWTs já emitidos para este usuário
+  // (troca de senha, mudança de papel) sem esperar a expiração natural do
+  // token. Ver achado R3 da auditoria de segurança.
+  tokenVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 0 },
 });
 
 export const Extension = sequelize.define("Extension", {
@@ -39,6 +43,10 @@ export const Extension = sequelize.define("Extension", {
     defaultValue: "offline",
   },
   voipLineId: { type: DataTypes.INTEGER, allowNull: true },
+  // Dono opcional do ramal. Se definido, só o próprio usuário (ou
+  // admin/supervisor) pode ler as credenciais WebRTC deste ramal — ramais
+  // sem dono continuam livres para hot-desking. Ver achado F1 da auditoria.
+  ownerUserId: { type: DataTypes.INTEGER, allowNull: true },
 });
 
 // ── Histórico de status dos agentes (para relatórios de produtividade) ────────
@@ -311,6 +319,9 @@ CallLog.belongsTo(VoipLine, { foreignKey: "voipLineId" });
 
 VoipLine.hasMany(Extension, { foreignKey: "voipLineId" });
 Extension.belongsTo(VoipLine, { foreignKey: "voipLineId" });
+
+User.hasMany(Extension, { as: "ownedExtensions", foreignKey: "ownerUserId" });
+Extension.belongsTo(User, { as: "owner", foreignKey: "ownerUserId" });
 
 Campaign.hasMany(CallRecording, { foreignKey: "campaignId" });
 CallRecording.belongsTo(Campaign, { foreignKey: "campaignId" });

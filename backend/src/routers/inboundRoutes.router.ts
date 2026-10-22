@@ -1,5 +1,5 @@
 import express, { Request, Response } from "express";
-import { verifyToken } from "../middleware/auth";
+import { verifyToken, requireSupervisor } from "../middleware/auth";
 import { InboundRoute } from "../db";
 import {
   upsertInboundDidRoute,
@@ -9,6 +9,9 @@ import {
 
 export const createInboundRoutesRouter = () => {
   const router = express.Router();
+  // Roteamento de Entrada fica fora do menu do papel agent — restringe toda
+  // a rota a admin/supervisor (achado F6 da auditoria).
+  router.use(requireSupervisor);
 
   // ── Roteamento de Entrada (DID → Ramal) ───────────────────────────────────
 

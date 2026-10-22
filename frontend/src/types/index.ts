@@ -36,6 +36,9 @@ export interface Extension {
   voipLine?: string;
   status?: string;
   pauseReason?: string;
+  // Dono opcional do ramal (hot-desking se vazio) — ver achado F1 da
+  // auditoria de segurança.
+  ownerUserId?: string | number | null;
 }
 
 export interface CreateExtensionPayload {
@@ -43,6 +46,7 @@ export interface CreateExtensionPayload {
   name: string;
   sipPassword?: string;
   voipLineId?: string;
+  ownerUserId?: string | number | null;
 }
 
 // VoIP Line
@@ -252,6 +256,8 @@ export interface CreateInboundRoutePayload {
 export interface NavItem {
   to: string;
   label: string;
+  /** Uma frase em linguagem simples dizendo para que serve a tela. */
+  hint?: string;
   icon: React.ComponentType<React.SVGProps<SVGSVGElement>>;
   iconColor: string;
 }

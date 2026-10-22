@@ -4,9 +4,14 @@ import { Server } from "socket.io";
 import { Campaign, CampaignContact, CallLog, Extension, VoipLine } from "../db";
 import { runCampaign } from "../services/campaignRunner";
 import { upload } from "../utils/routeHelpers";
+import { requireSupervisor } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 
 export const createCampaignsRouter = (io: Server) => {
   const router = express.Router();
+  // Campanhas ficam fora do menu do papel agent — restringe toda a rota a
+  // admin/supervisor (achado F6 da auditoria).
+  router.use(requireSupervisor);
 
   router.get("/campaigns", async (_, res: Response) => {
     const campaigns = await Campaign.findAll({
@@ -160,6 +165,7 @@ export const createCampaignsRouter = (io: Server) => {
 
   router.post(
     "/campaigns/:id/upload-phones",
+    actionLimiter,
     upload.single("file"),
     async (req: Request, res: Response) => {
       const campaign = (await Campaign.findByPk(
@@ -195,7 +201,7 @@ export const createCampaignsRouter = (io: Server) => {
     },
   );
 
-  router.post("/campaigns/:id/start", async (req: Request, res: Response) => {
+  router.post("/campaigns/:id/start", actionLimiter, async (req: Request, res: Response) => {
     const campaign = (await Campaign.findByPk(req.params.id as string)) as any;
     if (!campaign) {
       return res.status(404).json({ message: "Campanha não encontrada" });

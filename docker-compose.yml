@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-edacall}
       POSTGRES_USER: ${POSTGRES_USER:-edacall}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-edacall}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env — sem valor default, nem em dev}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -51,12 +51,12 @@ services:
     environment:
       NODE_ENV: development
       PORT: ${BACKEND_PORT:-5000}
-      DATABASE_URL: postgres://${POSTGRES_USER:-edacall}:${POSTGRES_PASSWORD:-edacall}@postgres:5432/${POSTGRES_DB:-edacall}
-      JWT_SECRET: ${JWT_SECRET:-supersecret}
+      DATABASE_URL: postgres://${POSTGRES_USER:-edacall}:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-edacall}
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no .env — gere com: openssl rand -hex 32}
       AMI_HOST: ${AMI_HOST:-asterisk}
       AMI_PORT: ${AMI_PORT:-5038}
-      AMI_USERNAME: ${AMI_USERNAME:-admin}
-      AMI_PASSWORD: ${AMI_PASSWORD:-admin}
+      AMI_USERNAME: ${AMI_USERNAME:?defina AMI_USERNAME no .env (deve coincidir com manager.conf)}
+      AMI_PASSWORD: ${AMI_PASSWORD:?defina AMI_PASSWORD no .env (deve coincidir com manager.conf)}
       ASTERISK_SIP_CUSTOM_FILE: ${ASTERISK_SIP_CUSTOM_FILE:-/etc/asterisk-custom/sip_custom.conf}
       ASTERISK_PJSIP_CUSTOM_FILE: ${ASTERISK_PJSIP_CUSTOM_FILE:-/etc/asterisk-custom/pjsip_custom.conf}
       ASTERISK_WS_URL: ${ASTERISK_WS_URL:-ws://localhost:8088/ws}

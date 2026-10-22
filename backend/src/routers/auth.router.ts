@@ -3,15 +3,21 @@ import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { login } from "../auth";
 import { verifyToken, requireAdmin } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 import { User } from "../db";
 
 export const createAuthRouter = () => {
   const router = express.Router();
 
-  // Rate limiter: máx 10 tentativas de login por IP a cada 15 min
+  // Rate limiter: máx 10 tentativas de login por IP + usuário a cada 15 min.
+  // Atrás de proxy reverso (Coolify/Traefik) todos os clientes chegam com o
+  // mesmo IP; só por IP, 10 senhas erradas de qualquer pessoa bloqueariam o
+  // login de todos. Incluir o usuário isola o bloqueio na conta atacada.
   const loginLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 10,
+    keyGenerator: (req) =>
+      `${req.ip}|${String(req.body?.username ?? "").trim().toLowerCase()}`,
     standardHeaders: true,
     legacyHeaders: false,
     message: { message: "Muitas tentativas de login. Tente novamente em 15 minutos." },
@@ -30,7 +36,7 @@ export const createAuthRouter = () => {
   });
 
   // Altera senha do próprio usuário autenticado
-  router.patch("/auth/me/password", verifyToken, async (req: Request, res: Response) => {
+  router.patch("/auth/me/password", verifyToken, actionLimiter, async (req: Request, res: Response) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword)
       return res.status(400).json({ message: "Preencha todos os campos" });
@@ -41,6 +47,7 @@ export const createAuthRouter = () => {
     const valid = bcrypt.compareSync(String(currentPassword), user.passwordHash);
     if (!valid) return res.status(401).json({ message: "Senha atual incorreta" });
     user.passwordHash = bcrypt.hashSync(String(newPassword), 10);
+    user.tokenVersion += 1; // revoga qualquer token emitido antes da troca de senha
     await user.save();
     return res.json({ message: "Senha alterada com sucesso" });
   });
@@ -63,6 +70,7 @@ export const createAuthRouter = () => {
     "/users",
     verifyToken,
     requireAdmin,
+    actionLimiter,
     async (req: Request, res: Response) => {
       const { username, password, role } = req.body;
       if (!username || !password || !role)
@@ -93,9 +101,14 @@ export const createAuthRouter = () => {
         return res.status(404).json({ message: "Usuário não encontrado" });
       const { username, password, role } = req.body;
       if (username) user.username = username;
-      if (password) user.passwordHash = bcrypt.hashSync(password, 10);
-      if (role && ["admin", "supervisor", "agent"].includes(role))
+      if (password) {
+        user.passwordHash = bcrypt.hashSync(password, 10);
+        user.tokenVersion += 1; // revoga tokens emitidos antes do reset de senha
+      }
+      if (role && ["admin", "supervisor", "agent"].includes(role) && role !== user.role) {
         user.role = role;
+        user.tokenVersion += 1; // revoga tokens emitidos com o papel antigo
+      }
       await user.save();
       return res.json({
         id: user.id,

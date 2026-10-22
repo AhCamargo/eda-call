@@ -11,6 +11,27 @@ const {
   asteriskInboundRoutesFile,
 } = config;
 
+// Erro de validação de entrada — o handler de erros global (routes.ts) usa
+// `.status` para decidir o código HTTP; sem isso, cairia como 500.
+export class ConfigValidationError extends Error {
+  status = 400;
+}
+
+// Nenhum campo livre gravado em arquivo .conf/dialplan do Asterisk pode
+// conter quebra de linha, "[" ou "]" — esses caracteres permitiriam encerrar
+// a linha/seção atual e injetar diretivas ou até aplicações de dialplan
+// arbitrárias (ex.: System()) na próxima recarga. Ver achado F16 da
+// auditoria de segurança (injeção de configuração/dialplan Asterisk).
+const assertSafeConfigValue = (value: unknown, fieldName: string): string => {
+  const text = String(value ?? "");
+  if (/[\n\r[\]]/.test(text)) {
+    throw new ConfigValidationError(
+      `Valor inválido em "${fieldName}": não pode conter quebra de linha, "[" ou "]".`,
+    );
+  }
+  return text;
+};
+
 const buildExtensionBlock = (
   number: string,
   secret: string,
@@ -235,6 +256,10 @@ export const upsertSipExtension = async ({
   if (!numberText) {
     throw new Error("Número do ramal inválido");
   }
+  assertSafeConfigValue(numberText, "number");
+  assertSafeConfigValue(secret, "secret");
+  assertSafeConfigValue(context, "context");
+  if (voipLineName) assertSafeConfigValue(voipLineName, "voipLineName");
 
   await upsertNamedBlock({
     filePath: asteriskSipCustomFile,
@@ -292,6 +317,18 @@ export const upsertSipVoipLine = async ({
   if (!username || !secret || !host) {
     throw new Error("Linha VoIP requer username, secret e host");
   }
+
+  assertSafeConfigValue(lineName, "name");
+  assertSafeConfigValue(username, "username");
+  assertSafeConfigValue(secret, "secret");
+  assertSafeConfigValue(host, "host");
+  assertSafeConfigValue(context, "context");
+  if (inboundContext) assertSafeConfigValue(inboundContext, "inboundContext");
+  assertSafeConfigValue(type, "type");
+  assertSafeConfigValue(dtmfmode, "dtmfmode");
+  if (fromdomain) assertSafeConfigValue(fromdomain, "fromdomain");
+  assertSafeConfigValue(codecs, "codecs");
+  if (insecure) assertSafeConfigValue(insecure, "insecure");
 
   await upsertNamedBlock({
     filePath: asteriskSipCustomFile,
@@ -493,6 +530,30 @@ export const upsertInboundIvrDialplan = async (params: {
   const contextName = String(params.contextName || "").trim();
   if (!contextName) throw new Error("contextName é obrigatório");
 
+  // extensions_custom.conf é dialplan EXECUTÁVEL do Asterisk (suporta
+  // System()/AGI()) — todo campo livre precisa ser validado antes de entrar
+  // nesse arquivo (achado F16 da auditoria de segurança).
+  assertSafeConfigValue(contextName, "contextName");
+  assertSafeConfigValue(params.name, "name");
+  if (params.audioFile) assertSafeConfigValue(params.audioFile, "audioFile");
+  if (params.fallbackExtension) {
+    assertSafeConfigValue(params.fallbackExtension, "fallbackExtension");
+  }
+  if (params.fallbackLabel) {
+    assertSafeConfigValue(params.fallbackLabel, "fallbackLabel");
+  }
+  assertSafeConfigValue(params.dialTechnology, "dialTechnology");
+  if (params.closedAudioFile) {
+    assertSafeConfigValue(params.closedAudioFile, "closedAudioFile");
+  }
+  for (const opt of params.options) {
+    assertSafeConfigValue(opt.keyDigit, "options[].keyDigit");
+    if (opt.label) assertSafeConfigValue(opt.label, "options[].label");
+    if (opt.targetExtension) {
+      assertSafeConfigValue(opt.targetExtension, "options[].targetExtension");
+    }
+  }
+
   const blockContent = buildInboundIvrDialplan(params);
 
   await upsertNamedBlock({
@@ -542,6 +603,8 @@ export const upsertTrunkInboundRoute = async ({
   const trunk = String(trunkContext || "").trim();
   const ivr = String(ivrContext || "").trim();
   if (!trunk || !ivr) return;
+  assertSafeConfigValue(trunk, "trunkContext");
+  assertSafeConfigValue(ivr, "ivrContext");
 
   const blockContent = `
 [${trunk}]
@@ -616,6 +679,9 @@ export const upsertInboundDidRoute = async ({
   destinationType?: string;
   destinationTarget: string;
 }) => {
+  assertSafeConfigValue(did, "did");
+  assertSafeConfigValue(destinationType, "destinationType");
+  assertSafeConfigValue(destinationTarget, "destinationTarget");
   await ensureInboundRoutesHeader();
   const dialLine = buildInboundDidDialLine(destinationType, destinationTarget);
   await upsertNamedBlock({
@@ -646,6 +712,9 @@ export const reprovisionAllInboundDidRoutes = async (
   await ensureInboundRoutesHeader();
   for (const route of routes) {
     if (route.enabled) {
+      assertSafeConfigValue(route.did, "did");
+      assertSafeConfigValue(route.destinationType ?? "extension", "destinationType");
+      assertSafeConfigValue(route.destinationTarget, "destinationTarget");
       const dialLine = buildInboundDidDialLine(route.destinationType ?? "extension", route.destinationTarget);
       await upsertNamedBlock({
         filePath: asteriskInboundRoutesFile,
@@ -742,6 +811,13 @@ export const upsertQueue = async ({
 }) => {
   const queueName = String(name || "").trim();
   if (!queueName) throw new Error("Nome da fila é obrigatório");
+  assertSafeConfigValue(queueName, "name");
+  assertSafeConfigValue(strategy, "strategy");
+  if (musiconhold) assertSafeConfigValue(musiconhold, "musiconhold");
+  if (announce) assertSafeConfigValue(announce, "announce");
+  for (const m of members) {
+    assertSafeConfigValue(m.extensionNumber, "members[].extensionNumber");
+  }
 
   await ensureQueuesHeader();
 

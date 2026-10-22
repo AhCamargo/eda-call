@@ -21,6 +21,8 @@ import {
   parseWavFormat,
   PHONE_REGEX,
 } from "../utils/routeHelpers";
+import { requireSupervisor } from "../middleware/auth";
+import { actionLimiter } from "../middleware/rateLimit";
 
 const { asteriskSoundsDir } = config;
 
@@ -58,6 +60,9 @@ export const buildUraCampaignStats = async (campaignId: number) => {
 
 export const createUraReverseRouter = (io: Server) => {
   const router = express.Router();
+  // URA Reversa fica fora do menu do papel agent — restringe toda a rota a
+  // admin/supervisor (achado F6 da auditoria).
+  router.use(requireSupervisor);
 
   router.get("/ura-reverse/campaigns", async (_, res: Response) => {
     const campaigns = (await UraReverseCampaign.findAll({
@@ -148,6 +153,7 @@ export const createUraReverseRouter = (io: Server) => {
 
   router.post(
     "/ura-reverse/campaigns/:id/audio",
+    actionLimiter,
     uploadAudio.single("audio"),
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
@@ -295,6 +301,7 @@ export const createUraReverseRouter = (io: Server) => {
 
   router.post(
     "/ura-reverse/campaigns/:id/contacts/upload",
+    actionLimiter,
     upload.single("file"),
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
@@ -358,6 +365,7 @@ export const createUraReverseRouter = (io: Server) => {
 
   router.post(
     "/ura-reverse/campaigns/:id/start",
+    actionLimiter,
     async (req: Request, res: Response) => {
       const campaign = (await UraReverseCampaign.findByPk(
         req.params.id as string,

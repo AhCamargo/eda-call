@@ -2,13 +2,16 @@ import express, { Request, Response } from "express";
 import fs from "fs";
 import path from "path";
 import config from "../config";
-import { verifyToken } from "../middleware/auth";
+import { verifyToken, requireSupervisor } from "../middleware/auth";
 import { CallRecording } from "../db";
 
 const { asteriskRecordingsDir } = config;
 
 export const createRecordingsRouter = () => {
   const router = express.Router();
+  // Gravações de chamadas ficam restritas a admin/supervisor — achado F2 da
+  // auditoria (agentes não devem ouvir/gerenciar chamadas de colegas).
+  router.use(requireSupervisor);
 
   router.post("/recordings", async (req: Request, res: Response) => {
     const {

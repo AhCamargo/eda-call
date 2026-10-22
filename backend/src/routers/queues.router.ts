@@ -1,9 +1,13 @@
 import express, { Request, Response } from "express";
 import { AsteriskQueue, AsteriskQueueMember } from "../db";
 import { upsertQueue, removeQueue } from "../services/asteriskProvisioning";
+import { requireSupervisor } from "../middleware/auth";
 
 export const createQueuesRouter = () => {
   const router = express.Router();
+  // Filas ficam fora do menu do papel agent — restringe toda a rota a
+  // admin/supervisor (achado F6 da auditoria).
+  router.use(requireSupervisor);
 
   // ── Filas (Asterisk Queues) ─────────────────────────────────────────────
 

@@ -137,6 +137,22 @@ export default function AgentView() {
     [extensions, selectedExtId],
   );
 
+  // Ramais com dono só aparecem para o próprio dono (ou admin/supervisor);
+  // ramais sem dono continuam livres para hot-desking — ver achado F1 da
+  // auditoria de segurança. O backend também aplica essa regra em
+  // GET /extensions/:id/webrtc-credentials; isto é só UX.
+  const isElevated = user?.role === "admin" || user?.role === "supervisor";
+  const selectableExtensions = useMemo(
+    () =>
+      extensions.filter(
+        (e) =>
+          !e.ownerUserId ||
+          isElevated ||
+          String(e.ownerUserId) === String(user?.id),
+      ),
+    [extensions, isElevated, user?.id],
+  );
+
   const sip = useSipClient(sipOptions);
 
   // Busca credenciais WebRTC ao selecionar ramal
@@ -228,7 +244,7 @@ export default function AgentView() {
                 <SelectValue placeholder="Selecione seu ramal..." />
               </SelectTrigger>
               <SelectContent className="bg-zinc-800 border-zinc-700">
-                {extensions.map((ext) => (
+                {selectableExtensions.map((ext) => (
                   <SelectItem
                     key={ext.id}
                     value={String(ext.id)}

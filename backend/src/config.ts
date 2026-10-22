@@ -13,7 +13,12 @@ const config = {
   port: Number(process.env.PORT || 5000),
   databaseUrl: process.env.DATABASE_URL,
   jwtSecret: requireEnv("JWT_SECRET"),
-  internalApiKey: process.env.INTERNAL_API_KEY || "",
+  // Origens autorizadas para CORS/Socket.IO. Vazio ("*") por padrão para não
+  // quebrar instalações self-hosted com domínio variável — defina para
+  // restringir em produção (ex.: "https://pbx.minhaempresa.com").
+  corsOrigin: process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(",").map((o) => o.trim())
+    : "*",
   backendInternalUrl: process.env.BACKEND_INTERNAL_URL || "http://backend:5000",
   asteriskRecordingsDir:
     process.env.ASTERISK_RECORDINGS_DIR || "/asterisk-recordings",
