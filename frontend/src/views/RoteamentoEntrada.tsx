@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { usePbx } from "../context/PbxContext";
 import api from "../api";
 import type { InboundRoute, CreateInboundRoutePayload, InboundDestinationType } from "../types";
 
@@ -46,6 +47,7 @@ interface QueueOption { id: number; name: string }
 
 export default function RoteamentoEntrada() {
   const { t } = useTranslation();
+  const { extensions } = usePbx();
   const [routes, setRoutes]         = useState<InboundRoute[]>([]);
   const [ivrs, setIvrs]             = useState<IvrOption[]>([]);
   const [queues, setQueues]         = useState<QueueOption[]>([]);
@@ -143,17 +145,17 @@ export default function RoteamentoEntrada() {
       setFeedback({ msg: "Rota removida.", type: "ok" });
       setDeleteDialog(null);
       await load();
-    } catch {
-      setFeedback({ msg: "Erro ao remover rota.", type: "error" });
+    } catch (err: any) {
+      setFeedback({ msg: err?.response?.data?.message || "Erro ao remover rota.", type: "error" });
     }
   };
 
   const handleReprovisionAll = async () => {
     try {
       await api.post("/inbound-routes/reprovision-all");
-      setFeedback({ msg: "Reprovisionamento concluído.", type: "ok" });
+      setFeedback({ msg: "Configurações reaplicadas.", type: "ok" });
     } catch {
-      setFeedback({ msg: "Erro ao reprovisionar.", type: "error" });
+      setFeedback({ msg: "Não foi possível reaplicar as configurações.", type: "error" });
     }
   };
 
@@ -168,7 +170,8 @@ export default function RoteamentoEntrada() {
       const q = queues.find((q) => q.name === route.destinationTarget);
       return q?.name ?? route.destinationTarget;
     }
-    return route.destinationTarget;
+    const ext = extensions.find((e) => String(e.number) === route.destinationTarget);
+    return ext?.name ? `${route.destinationTarget} — ${ext.name}` : route.destinationTarget;
   };
 
   const selectClass =
@@ -345,13 +348,23 @@ export default function RoteamentoEntrada() {
                   ))}
                 </select>
               ) : (
-                <input
+                <select
                   value={form.destinationTarget}
                   onChange={(e) => set("destinationTarget", e.target.value)}
-                  placeholder={t("inboundRoutes.destinationTargetPlaceholder")}
                   required
-                  className={`${inputClass} font-mono`}
-                />
+                  className={selectClass}
+                >
+                  <option value="">{t("inboundRoutes.selectExtension")}</option>
+                  {extensions.map((ext) => (
+                    <option key={ext.id} value={ext.number}>
+                      {ext.number}{ext.name ? ` — ${ext.name}` : ""}
+                    </option>
+                  ))}
+                  {form.destinationTarget &&
+                    !extensions.some((e) => String(e.number) === form.destinationTarget) && (
+                      <option value={form.destinationTarget}>{form.destinationTarget}</option>
+                    )}
+                </select>
               )}
             </div>
 
