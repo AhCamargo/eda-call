@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import {
   Users, Plus, Pencil, Trash2, RefreshCw,
-  Loader2, AlertCircle, Phone,
+  Loader2, AlertCircle, Phone, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -46,15 +46,17 @@ interface Extension {
 
 /* ── Constants ──────────────────────────────────────────────── */
 
+// Os valores são os nomes de estratégia do Asterisk; os rótulos descrevem
+// o comportamento para quem não conhece o Asterisk.
 const STRATEGIES = [
-  { value: "ringall",     label: "Tocar todos (ringall)" },
-  { value: "roundrobin",  label: "Revezamento (roundrobin)" },
-  { value: "leastrecent", label: "Menos recente (leastrecent)" },
-  { value: "fewestcalls", label: "Menos chamadas (fewestcalls)" },
-  { value: "random",      label: "Aleatório (random)" },
-  { value: "rrmemory",    label: "Revezamento com memória (rrmemory)" },
-  { value: "linear",      label: "Linear (linear)" },
-  { value: "wrandom",     label: "Aleatório ponderado (wrandom)" },
+  { value: "ringall",     label: "Tocar em todos ao mesmo tempo" },
+  { value: "rrmemory",    label: "Um de cada vez, revezando" },
+  { value: "leastrecent", label: "Quem está há mais tempo sem atender" },
+  { value: "fewestcalls", label: "Quem atendeu menos ligações" },
+  { value: "linear",      label: "Sempre na mesma ordem (prioridade)" },
+  { value: "random",      label: "Aleatório" },
+  { value: "roundrobin",  label: "Revezamento simples" },
+  { value: "wrandom",     label: "Aleatório por prioridade" },
 ];
 
 /* ── Helpers ────────────────────────────────────────────────── */
@@ -97,9 +99,13 @@ interface QueueDialogProps {
 function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogProps) {
   const [form, setForm] = useState<Omit<AsteriskQueue, "id">>(queue ?? emptyForm());
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   useEffect(() => {
     setForm(queue ? { ...queue } : emptyForm());
+    setSaveError(null);
+    setShowAdvanced(false);
   }, [queue, open]);
 
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
@@ -130,9 +136,12 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
 
   const handleSubmit = async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave(form, queue?.id);
       onClose();
+    } catch (e: any) {
+      setSaveError(e?.response?.data?.message ?? "Erro ao salvar fila.");
     } finally {
       setSaving(false);
     }
@@ -145,13 +154,18 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{queue ? "Editar fila" : "Nova fila"}</DialogTitle>
-          <DialogDescription>Configure a fila e seus ramais membros.</DialogDescription>
+          <DialogDescription>
+            Escolha quem atende esta fila e como as ligações são distribuídas.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="grid gap-4 py-2">
           {/* Name + Strategy */}
-          <div className="grid grid-cols-2 gap-4">
-            <FieldRow label="Nome da fila" hint="Será o nome do contexto no Asterisk">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <FieldRow
+              label="Nome da fila *"
+              hint={queue ? "O nome não pode ser alterado." : "Sem espaços (ex: vendas, suporte)."}
+            >
               <input
                 value={form.name}
                 onChange={(e) => setField("name", e.target.value.toLowerCase().replace(/\s+/g, "-"))}
@@ -160,40 +174,48 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
                 disabled={!!queue}
               />
             </FieldRow>
-            <FieldRow label="Estratégia de distribuição">
+            <FieldRow label="Como distribuir as ligações">
               <select value={form.strategy} onChange={(e) => setField("strategy", e.target.value)} className={inputCls()}>
                 {STRATEGIES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </FieldRow>
           </div>
 
-          <div className="grid grid-cols-3 gap-4">
-            <FieldRow label="Timeout por agente (s)" hint="Segundos tocando cada ramal">
-              <input type="number" min={5} max={120} value={form.timeout} onChange={(e) => setField("timeout", Number(e.target.value))} className={inputCls()} />
-            </FieldRow>
-            <FieldRow label="Max. na fila" hint="0 = ilimitado">
-              <input type="number" min={0} value={form.maxlen} onChange={(e) => setField("maxlen", Number(e.target.value))} className={inputCls()} />
-            </FieldRow>
-            <FieldRow label="Wrapup time (s)" hint="Tempo pós-chamada">
-              <input type="number" min={0} max={300} value={form.wrapuptime} onChange={(e) => setField("wrapuptime", Number(e.target.value))} className={inputCls()} />
-            </FieldRow>
-          </div>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors w-fit"
+          >
+            {showAdvanced ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            Ajustes técnicos
+          </button>
 
-          <div className="grid grid-cols-2 gap-4">
-            <FieldRow label="Music on hold" hint="Classe de MOH (opcional)">
-              <input value={form.musiconhold ?? ""} onChange={(e) => setField("musiconhold", e.target.value || null)} placeholder="default" className={inputCls()} />
-            </FieldRow>
-            <FieldRow label="Áudio de posição" hint="Arquivo de áudio (opcional)">
-              <input value={form.announce ?? ""} onChange={(e) => setField("announce", e.target.value || null)} placeholder="custom/posicao" className={inputCls()} />
-            </FieldRow>
-          </div>
+          {showAdvanced && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <FieldRow label="Tempo tocando cada ramal (s)">
+                <input type="number" min={5} max={120} value={form.timeout} onChange={(e) => setField("timeout", Number(e.target.value))} className={inputCls()} />
+              </FieldRow>
+              <FieldRow label="Máximo de pessoas esperando" hint="0 = sem limite">
+                <input type="number" min={0} value={form.maxlen} onChange={(e) => setField("maxlen", Number(e.target.value))} className={inputCls()} />
+              </FieldRow>
+              <FieldRow label="Descanso após cada ligação (s)" hint="Antes de receber a próxima">
+                <input type="number" min={0} max={300} value={form.wrapuptime} onChange={(e) => setField("wrapuptime", Number(e.target.value))} className={inputCls()} />
+              </FieldRow>
+              <FieldRow label="Música de espera" hint="Classe de música do Asterisk (padrão: default)">
+                <input value={form.musiconhold ?? ""} onChange={(e) => setField("musiconhold", e.target.value || null)} placeholder="default" className={inputCls()} />
+              </FieldRow>
+              <FieldRow label="Aviso de posição na fila" hint="Áudio opcional (ex: custom/posicao)">
+                <input value={form.announce ?? ""} onChange={(e) => setField("announce", e.target.value || null)} placeholder="custom/posicao" className={inputCls()} />
+              </FieldRow>
+            </div>
+          )}
 
           <Separator />
 
           {/* Members */}
           <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-              Membros da fila
+              Quem atende
               <Badge variant="secondary" className="ml-2">{form.members.length}</Badge>
             </p>
             {availableExtensions.length > 0 && (
@@ -214,7 +236,9 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
           </div>
 
           {form.members.length === 0 && (
-            <p className="text-xs text-muted-foreground/60 text-center py-2">Nenhum membro adicionado.</p>
+            <p className="text-xs text-amber-400/80 text-center py-2">
+              Adicione pelo menos um ramal — sem ninguém, quem liga fica esperando sem ser atendido.
+            </p>
           )}
 
           {form.members.map((m) => {
@@ -226,7 +250,7 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
                   <span className="font-mono font-semibold">{m.extensionNumber}</span>
                   {ext && <span className="text-muted-foreground text-xs">— {ext.name}</span>}
                 </div>
-                <FieldRow label="Penalidade">
+                <FieldRow label="Prioridade">
                   <input
                     type="number"
                     min={0}
@@ -234,7 +258,7 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
                     value={m.penalty}
                     onChange={(e) => setPenalty(m.extensionNumber, Number(e.target.value))}
                     className={inputCls() + " w-20"}
-                    title="0 = maior prioridade"
+                    title="0 = recebe primeiro; números maiores recebem só se os anteriores estiverem ocupados"
                   />
                 </FieldRow>
                 <Button
@@ -250,6 +274,13 @@ function QueueDialog({ open, queue, extensions, onClose, onSave }: QueueDialogPr
             );
           })}
         </div>
+
+        {saveError && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{saveError}</AlertDescription>
+          </Alert>
+        )}
 
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={saving}>Cancelar</Button>
@@ -274,6 +305,7 @@ export default function Filas() {
   const [dialogQueue, setDialogQueue] = useState<AsteriskQueue | null | "new">(null);
   const [deleteTarget, setDeleteTarget] = useState<AsteriskQueue | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const canEdit = user?.role === "admin" || user?.role === "supervisor";
 
@@ -309,10 +341,13 @@ export default function Filas() {
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await api.delete(`/queues/${deleteTarget.id}`);
       setQueues((prev) => prev.filter((q) => q.id !== deleteTarget.id));
       setDeleteTarget(null);
+    } catch (e: any) {
+      setDeleteError(e?.response?.data?.message ?? "Erro ao excluir fila.");
     } finally {
       setDeleting(false);
     }
@@ -363,7 +398,8 @@ export default function Filas() {
       {!loading && queues.length === 0 && !error && (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground text-sm">
-            Nenhuma fila configurada.
+            Nenhuma fila ainda. Filas são opcionais — use quando várias
+            pessoas atendem o mesmo setor.
             {canEdit && (
               <div className="mt-3">
                 <Button variant="outline" size="sm" onClick={() => setDialogQueue("new")}>
@@ -387,10 +423,8 @@ export default function Filas() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead className="hidden md:table-cell">Estratégia</TableHead>
-                  <TableHead className="w-24 text-center">Membros</TableHead>
-                  <TableHead className="hidden sm:table-cell w-20 text-center">Timeout</TableHead>
-                  <TableHead className="hidden sm:table-cell w-20 text-center">Max fila</TableHead>
+                  <TableHead className="hidden md:table-cell">Distribuição</TableHead>
+                  <TableHead className="w-28 text-center">Atendentes</TableHead>
                   <TableHead className="w-20 text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
@@ -420,15 +454,13 @@ export default function Filas() {
                       {strategyLabel(q.strategy)}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant={q.members.length > 0 ? "secondary" : "outline"}>
-                        {q.members.length}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-center text-sm">
-                      {q.timeout}s
-                    </TableCell>
-                    <TableCell className="hidden sm:table-cell text-center text-sm text-muted-foreground">
-                      {q.maxlen === 0 ? "∞" : q.maxlen}
+                      {q.members.length > 0 ? (
+                        <Badge variant="secondary">{q.members.length}</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-amber-400 border-amber-500/40" title="Sem atendentes, ninguém recebe as ligações desta fila">
+                          Nenhum
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       {canEdit && (
@@ -436,7 +468,7 @@ export default function Filas() {
                           <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setDialogQueue(q)} title="Editar">
                             <Pencil className="h-3.5 w-3.5" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteTarget(q)} title="Excluir">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => { setDeleteError(null); setDeleteTarget(q); }} title="Excluir">
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
                         </div>
@@ -465,9 +497,16 @@ export default function Filas() {
           <DialogHeader>
             <DialogTitle>Excluir fila</DialogTitle>
             <DialogDescription>
-              Remover a fila <strong>{deleteTarget?.name}</strong>? Ela será removida do Asterisk imediatamente.
+              Excluir a fila <strong>{deleteTarget?.name}</strong>? Opções da
+              Central Telefônica que apontam para ela deixarão de funcionar.
             </DialogDescription>
           </DialogHeader>
+          {deleteError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{deleteError}</AlertDescription>
+            </Alert>
+          )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>Cancelar</Button>
             <Button variant="destructive" onClick={handleDelete} disabled={deleting}>
