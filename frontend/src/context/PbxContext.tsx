@@ -226,12 +226,16 @@ export const PbxProvider: FC<PbxProviderProps> = ({
   const uploadPhones = async (
     campaignId: string,
     file: File,
-  ): Promise<{ total: number; totalInvalid: number }> => {
+  ): Promise<{ total: number; totalInvalid: number; totalDuplicates: number }> => {
     const formData = new FormData();
     formData.append("file", file);
     const res = await api.post(`/campaigns/${campaignId}/upload-phones`, formData);
     await fetchAll();
-    return { total: res.data?.total ?? 0, totalInvalid: res.data?.totalInvalid ?? 0 };
+    return {
+      total: res.data?.total ?? 0,
+      totalInvalid: res.data?.totalInvalid ?? 0,
+      totalDuplicates: res.data?.totalDuplicates ?? 0,
+    };
   };
 
   const startCampaign = async (campaignId: string): Promise<void> => {

@@ -5,7 +5,7 @@ import type { Server } from "socket.io";
 
 const { Campaign, CampaignContact, runCampaign } = vi.hoisted(() => ({
   Campaign: { findByPk: vi.fn() },
-  CampaignContact: { bulkCreate: vi.fn() },
+  CampaignContact: { bulkCreate: vi.fn(), findAll: vi.fn(), destroy: vi.fn() },
   runCampaign: vi.fn(),
 }));
 vi.mock("../db", () => ({
@@ -62,6 +62,7 @@ describe("POST /campaigns/:id/upload-phones", () => {
 
   it("importa a coluna telefone de um CSV com ;", async () => {
     Campaign.findByPk.mockResolvedValue({ id: 1 });
+    CampaignContact.findAll.mockResolvedValue([]);
     const res = await request(app)
       .post("/campaigns/1/upload-phones")
       .attach("file", Buffer.from("Nome;Telefone\nAna;(11) 99999-0000\n"), "lista.csv");
@@ -79,5 +80,37 @@ describe("POST /campaigns/:id/upload-phones", () => {
       .attach("file", Buffer.from("nome\nAna\n"), "lista.csv");
     expect(res.status).toBe(400);
     expect(CampaignContact.bulkCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("importação sem duplicar e remoção de contatos", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("não duplica números que já estão na campanha", async () => {
+    Campaign.findByPk.mockResolvedValue({ id: 1 });
+    CampaignContact.findAll.mockResolvedValue([{ phoneNumber: "11999990000" }]);
+    const res = await request(app)
+      .post("/campaigns/1/upload-phones")
+      .attach("file", Buffer.from("telefone\n11999990000\n11988880000\n"), "lista.csv");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 1, totalDuplicates: 1 });
+    expect(CampaignContact.bulkCreate).toHaveBeenCalledWith([
+      { campaignId: 1, phoneNumber: "11988880000" },
+    ]);
+  });
+
+  it("remove só o contato daquela campanha", async () => {
+    CampaignContact.destroy.mockResolvedValue(1);
+    const res = await request(app).delete("/campaigns/1/contacts/5");
+    expect(res.status).toBe(200);
+    expect(CampaignContact.destroy).toHaveBeenCalledWith({
+      where: { id: "5", campaignId: "1" },
+    });
+  });
+
+  it("404 quando o contato não pertence à campanha", async () => {
+    CampaignContact.destroy.mockResolvedValue(0);
+    const res = await request(app).delete("/campaigns/1/contacts/99");
+    expect(res.status).toBe(404);
   });
 });

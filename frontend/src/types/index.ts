@@ -216,7 +216,7 @@ export interface IPbxContextValue {
   uploadPhones: (
     campaignId: string,
     file: File,
-  ) => Promise<{ total: number; totalInvalid: number }>;
+  ) => Promise<{ total: number; totalInvalid: number; totalDuplicates: number }>;
   startCampaign: (campaignId: string) => Promise<void>;
   createVoipLine: (payload: CreateVoipLinePayload) => Promise<void>;
   updateVoipLine: (

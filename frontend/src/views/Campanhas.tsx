@@ -109,6 +109,21 @@ const missingFor = (c: Campaign): string[] =>
 const apiError = (err: any, fallback: string) =>
   err?.response?.data?.message || fallback;
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// 11999990000 -> (11) 99999-0000; 5511999990000 -> +55 (11) 99999-0000
+const formatPhone = (raw: string) => {
+  const d = String(raw).replace(/\D/g, "");
+  const local = (n: string) =>
+    n.length === 11
+      ? `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`
+      : n.length === 10
+        ? `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`
+        : n;
+  if (d.length >= 12 && d.startsWith("55")) return `+55 ${local(d.slice(2))}`;
+  return local(d);
+};
+
 export default function Campanhas() {
   const { t } = useTranslation();
   const {
@@ -122,6 +137,7 @@ export default function Campanhas() {
     assignVoipLines,
     uploadPhones,
     startCampaign,
+    fetchAll,
   } = usePbx();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -132,6 +148,10 @@ export default function Campanhas() {
     intervalSeconds: 5,
   });
   const [assignTab, setAssignTab] = useState("phones");
+  // Contatos que entraram na última importação, para destacar na lista.
+  const [importBaseline, setImportBaseline] = useState<Set<string> | null>(null);
+  const [contactSearch, setContactSearch] = useState("");
+  const [confirmClear, setConfirmClear] = useState(false);
   const [assignFeedback, setAssignFeedback] = useState<{
     type: string;
     message: string;
@@ -198,6 +218,9 @@ export default function Campanhas() {
     setSelectedVoipLines((campaign.voipLines || []).map((l) => String(l.id)));
     setCsvFile(null);
     setAssignFeedback(null);
+    setImportBaseline(null);
+    setContactSearch("");
+    setConfirmClear(false);
     // Abre na primeira etapa que ainda falta.
     const missing = missingFor(campaign);
     setAssignTab(
@@ -296,18 +319,57 @@ export default function Campanhas() {
   const handleUploadPhones = async () => {
     if (!assignDialog?.campaign || !csvFile) return;
     setLoading(true);
+    const before = new Set(
+      (campaigns.find((c) => c.id === assignDialog.campaign.id)?.contacts ?? []).map((c) =>
+        String(c.id),
+      ),
+    );
     try {
-      const { total, totalInvalid } = await uploadPhones(assignDialog.campaign.id, csvFile);
+      const { total, totalInvalid, totalDuplicates } = await uploadPhones(
+        assignDialog.campaign.id,
+        csvFile,
+      );
       setCsvFile(null);
+      setImportBaseline(before);
+      const extras = [
+        totalDuplicates && `${plural(totalDuplicates, "já estava", "já estavam")} na lista`,
+        totalInvalid && `${plural(totalInvalid, "linha ignorada", "linhas ignoradas")} (número inválido)`,
+      ].filter(Boolean);
       setAssignFeedback({
         type: "success",
         message:
-          `${total} contato${total === 1 ? "" : "s"} importado${total === 1 ? "" : "s"}` +
-          (totalInvalid ? ` — ${totalInvalid} linha${totalInvalid === 1 ? "" : "s"} ignorada${totalInvalid === 1 ? "" : "s"} (número inválido).` : "."),
+          `${plural(total, "contato importado", "contatos importados")}` +
+          (extras.length ? ` — ${extras.join("; ")}.` : "."),
       });
     } catch (err) {
       setAssignFeedback({ type: "error", message: apiError(err, "Erro ao enviar lista.") });
     } finally {
+      setLoading(false);
+    }
+  };
+
+  const removeContact = async (contactId: string) => {
+    if (!assignDialog?.campaign) return;
+    try {
+      await api.delete(`/campaigns/${assignDialog.campaign.id}/contacts/${contactId}`);
+      await fetchAll();
+    } catch (err) {
+      setAssignFeedback({ type: "error", message: apiError(err, "Erro ao remover contato.") });
+    }
+  };
+
+  const clearContacts = async () => {
+    if (!assignDialog?.campaign) return;
+    setLoading(true);
+    try {
+      await api.delete(`/campaigns/${assignDialog.campaign.id}/contacts`);
+      await fetchAll();
+      setImportBaseline(null);
+      setAssignFeedback({ type: "success", message: "Lista de contatos apagada." });
+    } catch (err) {
+      setAssignFeedback({ type: "error", message: apiError(err, "Erro ao apagar a lista.") });
+    } finally {
+      setConfirmClear(false);
       setLoading(false);
     }
   };
@@ -644,11 +706,6 @@ export default function Campanhas() {
                 </code>
                 , um número por linha, com DDD. Ex.: 11999990000.
               </p>
-              <p className="text-xs text-muted-foreground">
-                Contatos já na campanha:{" "}
-                {campaigns.find((c) => c.id === assignDialog?.campaign?.id)
-                  ?.contacts?.length ?? 0}
-              </p>
               <input
                 type="file"
                 accept=".csv"
@@ -669,6 +726,102 @@ export default function Campanhas() {
                 <Upload className="mr-2 h-4 w-4" />
                 Enviar lista
               </Button>
+
+              {(() => {
+                const all = [
+                  ...(campaigns.find((c) => c.id === assignDialog?.campaign?.id)?.contacts ?? []),
+                ].sort((a, b) => Number(b.id) - Number(a.id)); // mais recentes primeiro
+                // `importBaseline` guarda os ids de ANTES da última importação:
+                // quem não estava lá é novo. null = nenhuma importação ainda.
+                const isNew = (id: string) => !!importBaseline && !importBaseline.has(String(id));
+                const q = contactSearch.replace(/\D/g, "");
+                const shown = q ? all.filter((c) => c.phoneNumber.includes(q)) : all;
+                const newCount = all.filter((c) => isNew(c.id)).length;
+                return (
+                  <div className="space-y-2 pt-2 border-t">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">
+                        {plural(all.length, "contato", "contatos")} na campanha
+                        {newCount > 0 && (
+                          <span className="ml-1.5 text-xs font-normal text-emerald-400">
+                            ({plural(newCount, "novo", "novos")})
+                          </span>
+                        )}
+                      </p>
+                      {all.length > 0 &&
+                        (confirmClear ? (
+                          <span className="flex items-center gap-1 text-xs">
+                            Apagar todos?
+                            <Button size="sm" variant="destructive" className="h-6 px-2 text-xs"
+                              onClick={clearContacts} disabled={loading}>
+                              Sim
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-6 px-2 text-xs"
+                              onClick={() => setConfirmClear(false)}>
+                              Não
+                            </Button>
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmClear(true)}
+                            className="text-xs text-muted-foreground hover:text-destructive"
+                          >
+                            Apagar lista
+                          </button>
+                        ))}
+                    </div>
+                    {all.length > 10 && (
+                      <Input
+                        value={contactSearch}
+                        onChange={(e) => setContactSearch(e.target.value)}
+                        placeholder="Buscar número..."
+                      />
+                    )}
+                    {all.length === 0 ? (
+                      <p className="text-xs text-muted-foreground py-2 text-center">
+                        Nenhum contato ainda — envie a planilha acima.
+                      </p>
+                    ) : (
+                      <div className="max-h-56 overflow-y-auto rounded-md border divide-y">
+                        {shown.slice(0, 300).map((c) => (
+                          <div
+                            key={c.id}
+                            className={`flex items-center justify-between px-3 py-1.5 text-sm ${
+                              isNew(c.id) ? "bg-emerald-500/10" : ""
+                            }`}
+                          >
+                            <span className="font-mono">
+                              {formatPhone(c.phoneNumber)}
+                              {isNew(c.id) && (
+                                <Badge variant="outline" className="ml-2 text-[10px] text-emerald-400 border-emerald-500/40">
+                                  novo
+                                </Badge>
+                              )}
+                            </span>
+                            <button
+                              onClick={() => removeContact(c.id)}
+                              title="Remover este número"
+                              className="text-muted-foreground hover:text-destructive p-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                        {shown.length === 0 && (
+                          <p className="text-xs text-muted-foreground p-3 text-center">
+                            Nenhum número encontrado.
+                          </p>
+                        )}
+                        {shown.length > 300 && (
+                          <p className="text-xs text-muted-foreground p-2 text-center">
+                            Mostrando 300 de {shown.length} — use a busca para encontrar um número.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </TabsContent>
           </Tabs>
         </DialogContent>

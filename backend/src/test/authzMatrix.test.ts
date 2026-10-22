@@ -114,7 +114,7 @@ const buildApp = (router: express.Router, role: Role) => {
 describe("matriz de autorização por papel (achados F1/F2/F3/F5/F6 da rodada 1)", () => {
   const cases: {
     name: string;
-    method: "get" | "post";
+    method: "get" | "post" | "delete";
     path: string;
     adminOnly: boolean;
     buildRouter: () => express.Router;
@@ -151,6 +151,13 @@ describe("matriz de autorização por papel (achados F1/F2/F3/F5/F6 da rodada 1)
       name: "GET /campaigns (requireSupervisor)",
       method: "get",
       path: "/campaigns",
+      adminOnly: false,
+      buildRouter: () => createCampaignsRouter(fakeIo),
+    },
+    {
+      name: "DELETE /campaigns/:id/contacts (requireSupervisor)",
+      method: "delete",
+      path: "/campaigns/1/contacts",
       adminOnly: false,
       buildRouter: () => createCampaignsRouter(fakeIo),
     },

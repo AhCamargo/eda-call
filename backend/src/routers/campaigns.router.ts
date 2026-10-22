@@ -190,16 +190,47 @@ export const createCampaignsRouter = (io: Server) => {
         });
       }
 
-      await CampaignContact.bulkCreate(
-        valid.map((phoneNumber) => ({ campaignId: campaign.id, phoneNumber })),
-      );
+      // Reimportar a mesma planilha não deve duplicar contatos.
+      const existing = (await CampaignContact.findAll({
+        where: { campaignId: campaign.id },
+        attributes: ["phoneNumber"],
+      })) as any[];
+      const known = new Set(existing.map((c) => c.phoneNumber));
+      const fresh = valid.filter((phone) => !known.has(phone));
+
+      if (fresh.length) {
+        await CampaignContact.bulkCreate(
+          fresh.map((phoneNumber) => ({ campaignId: campaign.id, phoneNumber })),
+        );
+      }
       return res.json({
         message: "Lista de telefones importada",
-        total: valid.length,
+        total: fresh.length,
+        totalDuplicates: valid.length - fresh.length,
         totalInvalid: invalid.length,
       });
     },
   );
+
+  router.delete(
+    "/campaigns/:id/contacts/:contactId",
+    async (req: Request, res: Response) => {
+      const removed = await CampaignContact.destroy({
+        where: { id: req.params.contactId, campaignId: req.params.id },
+      });
+      if (!removed) {
+        return res.status(404).json({ message: "Contato não encontrado" });
+      }
+      return res.json({ message: "Contato removido" });
+    },
+  );
+
+  router.delete("/campaigns/:id/contacts", async (req: Request, res: Response) => {
+    const removed = await CampaignContact.destroy({
+      where: { campaignId: req.params.id },
+    });
+    return res.json({ message: "Lista de contatos apagada", total: removed });
+  });
 
   router.post("/campaigns/:id/start", actionLimiter, async (req: Request, res: Response) => {
     const campaign = (await Campaign.findByPk(req.params.id as string, {
