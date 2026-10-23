@@ -3,10 +3,15 @@ import path from "path";
 import config from "../config";
 import { CallRecording, Extension } from "../db";
 import logger from "../logger";
+import { wavDurationSeconds } from "../utils/wavDuration";
 
 const { asteriskRecordingsDir } = config;
 
 const POLL_INTERVAL_MS = 10000;
+// O MixMonitor escreve o arquivo durante toda a ligação: só registra a
+// gravação depois que ela fica este tempo sem crescer (ligação encerrada),
+// senão a duração sairia parcial.
+const STABLE_MS = 8000;
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
 // Set em memória carregado uma vez no boot — elimina full table scan a cada tick
@@ -73,6 +78,9 @@ const syncRecordingsFromDisk = async () => {
       continue;
     }
 
+    if (Date.now() - stat.mtimeMs < STABLE_MS) continue; // ainda gravando
+
+    const durationSeconds = await wavDurationSeconds(filePath).catch(() => 0);
     const { uniqueId, callerNumber, calleeNumber } = parseRecordingFilename(filePath);
 
     let extensionId: number | null = null;
@@ -85,7 +93,7 @@ const syncRecordingsFromDisk = async () => {
     try {
       await CallRecording.create({
         filePath,
-        durationSeconds: 0,
+        durationSeconds,
         callUniqueId: uniqueId,
         extensionId,
         createdAt: stat.birthtime || new Date(),
@@ -96,6 +104,23 @@ const syncRecordingsFromDisk = async () => {
       // Inserção falhou (ex: unique constraint) — não adicionar ao Set, será retentado
     }
   }
+};
+
+// Gravações registradas antes do cálculo de duração existir ficaram com 0.
+const backfillMissingDurations = async () => {
+  const rows = (await CallRecording.findAll({
+    where: { durationSeconds: 0 },
+    attributes: ["id", "filePath"],
+  })) as any[];
+  let fixed = 0;
+  for (const row of rows) {
+    const seconds = await wavDurationSeconds(row.filePath).catch(() => 0);
+    if (seconds > 0) {
+      await CallRecording.update({ durationSeconds: seconds }, { where: { id: row.id } });
+      fixed += 1;
+    }
+  }
+  if (fixed) logger.info(`[RecordingsSync] Duração preenchida em ${fixed} gravações antigas.`);
 };
 
 export const startRecordingsSyncService = () => {
@@ -116,6 +141,9 @@ export const startRecordingsSyncService = () => {
       logger.info(`[RecordingsSync] ${set.size} gravações conhecidas carregadas do banco.`);
       runSync();
       intervalId = setInterval(runSync, POLL_INTERVAL_MS);
+      backfillMissingDurations().catch((error: any) =>
+        logger.error("Erro ao preencher duração das gravações:", { message: error.message }),
+      );
     })
     .catch((error: any) => {
       logger.error("Erro ao inicializar RecordingsSyncService:", { message: error.message });
