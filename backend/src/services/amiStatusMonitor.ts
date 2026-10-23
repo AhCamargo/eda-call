@@ -303,7 +303,7 @@ const dispositionToResult = (disposition: string): "atendida" | "nao_atendida" |
   }
 };
 
-const handleCdrEvent = async (event: any) => {
+export const handleCdrEvent = async (event: any) => {
   const uniqueId = String(event.UniqueID || event.Uniqueid || "");
   if (!uniqueId) return;
 
@@ -314,43 +314,44 @@ const handleCdrEvent = async (event: any) => {
   const src = String(event.Source || event.CallerID || "");
   const dst = String(event.Destination || "");
   const disposition = String(event.Disposition || "NO ANSWER");
-  const billsec = parseInt(String(event.Billsec || "0"), 10);
+  // Tempo falado (sem o toque): campo BillableSeconds do evento Cdr do AMI.
+  const billsec = parseInt(String(event.BillableSeconds || event.Billsec || "0"), 10);
   const duration = parseInt(String(event.Duration || "0"), 10);
 
-  // Identifica ramal pelo canal de origem (SIP/1400-xxx → "1400")
   const srcChannel = String(event.Channel || "");
   const dstChannel = String(event.DestinationChannel || event.DestChannel || "");
+  const dstContext = String(event.DestinationContext || "");
 
-  const extractExtNumber = (ch: string) => {
-    const m = ch.match(/^SIP\/([^-/]+)/i);
-    return m ? m[1] : null;
-  };
+  // SIP/1400-0000001a → "1400"; SIP/efix-0000001b → "efix" (tronco)
+  const channelPeer = (ch: string) => ch.match(/^SIP\/([^-/]+)/i)?.[1] ?? null;
 
-  const srcExtNum = extractExtNumber(srcChannel);
-  const dstExtNum = extractExtNumber(dstChannel);
+  const findExtension = async (number: string | null) =>
+    number ? ((await (Extension as any).findOne({ where: { number } })) as any) : null;
+  const findLine = async (name: string | null) =>
+    name ? ((await (VoipLine as any).findOne({ where: { name } })) as any) : null;
 
-  let extensionId: number | null = null;
-  let voipLineId: number | null = null;
+  const srcPeer = channelPeer(srcChannel);
+  const dstPeer = channelPeer(dstChannel);
+  // O canal de origem é um tronco? Então a ligação passou pela operadora.
+  const srcLine = await findLine(srcPeer);
+  const dstLine = await findLine(dstPeer);
+  // Número de origem é um ramal? (no discador o CallerID é o ramal)
+  const srcExt = (await findExtension(src)) || (srcLine ? null : await findExtension(srcPeer));
+  const dstExt = (await findExtension(dst)) || (await findExtension(dstPeer));
 
-  if (srcExtNum) {
-    const ext = await (Extension as any).findOne({ where: { number: srcExtNum } }) as any;
-    if (ext) extensionId = ext.id;
-    else {
-      // pode ser um tronco
-      const line = await (VoipLine as any).findOne({ where: { name: srcExtNum } }) as any;
-      if (line) voipLineId = line.id;
-    }
-  }
+  // Direção:
+  //  - URA reversa: sempre sai (o cliente aparece como origem do Originate)
+  //  - entrou pelo tronco: feita se a origem é um ramal (discador), senão recebida
+  //  - saiu de um ramal: interna se o destino também é ramal, senão feita
+  let direction: "inbound" | "outbound" | "internal";
+  if (dstContext === "ura-reversa") direction = "outbound";
+  else if (srcLine) direction = srcExt ? "outbound" : "inbound";
+  else if (srcExt) direction = dstExt && !dstLine ? "internal" : "outbound";
+  else direction = "inbound";
 
-  if (!extensionId && dstExtNum) {
-    const ext = await (Extension as any).findOne({ where: { number: dstExtNum } }) as any;
-    if (ext) extensionId = ext.id;
-  }
-
-  // Determina direção: inbound se o src é um tronco (não é ramal)
-  let direction = "internal";
-  if (srcExtNum && !extensionId) direction = "inbound";
-  else if (dst && dst.length > 5 && extensionId) direction = "outbound";
+  const extensionId: number | null =
+    direction === "inbound" ? dstExt?.id ?? null : srcExt?.id ?? dstExt?.id ?? null;
+  const voipLineId: number | null = (srcLine ?? dstLine)?.id ?? null;
 
   const phoneNumber = direction === "inbound" ? src : dst || src;
 

@@ -77,6 +77,7 @@ export const runCampaign = async (campaignId: number, io: Server) => {
       const actionId = newActionId(`dialer-${campaign.id}`);
       const watch = watchOriginate(actionId, ORIGINATE_TIMEOUT_MS);
       let result = "nao_atendida";
+      let asteriskUniqueId: string | null = null;
       try {
         await originateCall(
           contact.phoneNumber,
@@ -86,18 +87,35 @@ export const runCampaign = async (campaignId: number, io: Server) => {
         );
         const { outcome, uniqueid } = await watch.result;
         result = OUTCOME_TO_RESULT[outcome];
+        asteriskUniqueId = uniqueid;
         // Só passa para o próximo número quando esta ligação terminar.
         if (outcome === "answered" && uniqueid) await waitForHangup(uniqueid, MAX_CALL_MS);
       } catch {
         watch.cancel();
       }
-      const callLog = await CallLog.create({
+      // O CDR do Asterisk também registra esta ligação (mesmo uniqueid).
+      // Se ele já chegou, completa aquela linha em vez de criar outra —
+      // senão a ligação apareceria duas vezes nos relatórios.
+      const campaignFields = {
         campaignId: campaign.id,
         extensionId: extension?.id || null,
         voipLineId: voipLine?.id || null,
         phoneNumber: contact.phoneNumber,
         result,
-      });
+      };
+      const cdrRow = asteriskUniqueId
+        ? ((await CallLog.findOne({ where: { callUniqueId: asteriskUniqueId } })) as any)
+        : null;
+      if (cdrRow) await cdrRow.update(campaignFields);
+      else
+        await CallLog.create({
+          ...campaignFields,
+          callUniqueId: asteriskUniqueId,
+          // Com uniqueid, o CDR que chegar depois é descartado como duplicata
+          // e esta linha vale pela ligação; sem ele, o CDR (se vier) conta
+          // a ligação nos indicadores e esta linha fica só como registro da campanha.
+          direction: asteriskUniqueId ? "outbound" : null,
+        });
 
       const callUniqueId = `${campaign.id}-${Date.now()}-${index}`;
 

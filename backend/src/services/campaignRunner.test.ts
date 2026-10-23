@@ -23,7 +23,7 @@ vi.mock("../ami", () => ({
 
 const { Campaign, CallLog, UraLog } = vi.hoisted(() => ({
   Campaign: { findByPk: vi.fn() },
-  CallLog: { create: vi.fn() },
+  CallLog: { create: vi.fn(), findOne: vi.fn().mockResolvedValue(null) },
   UraLog: { create: vi.fn() },
 }));
 

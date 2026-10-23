@@ -33,6 +33,9 @@ import {
   Filter,
   Calendar,
   RefreshCw,
+  PhoneIncoming,
+  PhoneOutgoing,
+  ArrowLeftRight,
 } from "lucide-react";
 
 import * as XLSX from "xlsx";
@@ -118,13 +121,59 @@ const RESULT_COLORS: Record<string, string> = {
   ocupado: "border-yellow-500/40 text-yellow-400 bg-yellow-500/10",
 };
 
+const RESULT_LABELS: Record<string, string> = {
+  atendida: "Atendida",
+  nao_atendida: "Não atendida",
+  numero_nao_existe: "Nº inexistente",
+  rejeitada: "Recusada / ocupado",
+  ocupado: "Ocupado",
+};
+const resultLabel = (result?: string) =>
+  RESULT_LABELS[result?.toLowerCase() || ""] || result || "—";
+
 function ResultBadge({ result }: { result?: string }) {
   const r = result?.toLowerCase() || "";
   const cls = RESULT_COLORS[r] || "border-zinc-700 text-zinc-400";
   return (
-    <Badge variant="outline" className={`text-xs capitalize ${cls}`}>
-      {result || "—"}
+    <Badge variant="outline" className={`text-xs ${cls}`}>
+      {resultLabel(result)}
     </Badge>
+  );
+}
+
+/* ── Direção (entrou / saiu) ────────────────────────────────────── */
+// direction vem do CDR do Asterisk; ligações do discador são gravadas pela
+// campanha (sem direction) e sempre saem.
+type CallDirection = "inbound" | "outbound" | "internal";
+const directionOf = (item: any): CallDirection | null =>
+  item.direction === "inbound" || item.direction === "outbound" || item.direction === "internal"
+    ? item.direction
+    : item.campaignId
+      ? "outbound"
+      : null;
+
+const DIRECTION_CFG: Record<CallDirection, { label: string; icon: any; cls: string }> = {
+  inbound: { label: "Recebida", icon: PhoneIncoming, cls: "text-emerald-400" },
+  outbound: { label: "Feita", icon: PhoneOutgoing, cls: "text-sky-400" },
+  internal: { label: "Interna", icon: ArrowLeftRight, cls: "text-zinc-400" },
+};
+
+const directionLabel = (item: any) => {
+  const d = directionOf(item);
+  if (!d) return "—";
+  return item.campaignId && !item.direction ? "Feita (discador)" : DIRECTION_CFG[d].label;
+};
+
+function DirectionBadge({ item }: { item: any }) {
+  const d = directionOf(item);
+  if (!d) return <span className="text-zinc-600 text-xs">—</span>;
+  const cfg = DIRECTION_CFG[d];
+  const Icon = cfg.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-medium ${cfg.cls}`}>
+      <Icon size={13} />
+      {directionLabel(item)}
+    </span>
   );
 }
 
@@ -132,11 +181,12 @@ function ResultBadge({ result }: { result?: string }) {
 function sheetByExtension(rows) {
   return {
     name: "Chamadas por Ramal",
-    headers: ["Ramal", "Telefone", "Resultado", "Duração", "Data"],
+    headers: ["Tipo", "Ramal", "Telefone", "Resultado", "Duração", "Data"],
     rows: rows.map((i) => [
+      directionLabel(i),
       i.Extension?.number || "—",
       i.phoneNumber,
-      i.result,
+      resultLabel(i.result),
       i.duration ? fmtDuration(i.duration) : "—",
       i.createdAt ? new Date(i.createdAt).toLocaleString("pt-BR") : "—",
     ]),
@@ -149,7 +199,7 @@ function sheetByCampaign(rows) {
     rows: rows.map((i) => [
       i.Campaign?.name || "—",
       i.phoneNumber,
-      i.result,
+      resultLabel(i.result),
       i.createdAt ? new Date(i.createdAt).toLocaleString("pt-BR") : "—",
     ]),
   };
@@ -194,6 +244,7 @@ export default function Relatorios() {
   /* filtros */
   const [extSearch, setExtSearch] = useState("");
   const [extFilter, setExtFilter] = useState("all");
+  const [dirFilter, setDirFilter] = useState<"all" | CallDirection>("all");
   const [campSearch, setCampSearch] = useState("");
   const [campFilter, setCampFilter] = useState("all");
   const [uraSearch, setUraSearch] = useState("");
@@ -225,6 +276,7 @@ export default function Relatorios() {
   const filteredExt = useMemo(() => {
     let list = [...callsByExt];
     if (extFilter !== "all") list = list.filter((r) => String(r.extensionId) === extFilter);
+    if (dirFilter !== "all") list = list.filter((r) => directionOf(r) === dirFilter);
     if (extSearch.trim()) {
       const q = extSearch.toLowerCase();
       list = list.filter(
@@ -232,7 +284,16 @@ export default function Relatorios() {
       );
     }
     return list;
-  }, [callsByExt, extFilter, extSearch]);
+  }, [callsByExt, extFilter, extSearch, dirFilter]);
+
+  const dirCounts = useMemo(() => {
+    const c = { inbound: 0, outbound: 0, internal: 0 };
+    for (const r of callsByExt) {
+      const d = directionOf(r);
+      if (d) c[d] += 1;
+    }
+    return c;
+  }, [callsByExt]);
 
   const filteredCamp = useMemo(() => {
     let list = [...callsByCamp];
@@ -347,13 +408,37 @@ export default function Relatorios() {
             onSelect={setExtFilter}
             selectPlaceholder="Todos os ramais"
             selectOptions={extensions.map((e) => ({ value: String(e.id), label: `${e.number} — ${e.name}` }))}
-            onClear={() => { setExtSearch(""); setExtFilter("all"); }}
-            showClear={extFilter !== "all" || !!extSearch.trim()}
+            onClear={() => { setExtSearch(""); setExtFilter("all"); setDirFilter("all"); }}
+            showClear={extFilter !== "all" || !!extSearch.trim() || dirFilter !== "all"}
           />
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              ["all", "Todas", callsByExt.length],
+              ["inbound", "Recebidas", dirCounts.inbound],
+              ["outbound", "Feitas", dirCounts.outbound],
+              ["internal", "Internas", dirCounts.internal],
+            ] as const).map(([value, label, count]) => (
+              <Button
+                key={value}
+                size="sm"
+                variant={dirFilter === value ? "secondary" : "outline"}
+                onClick={() => setDirFilter(value)}
+                className="h-7 gap-1.5 text-xs border-zinc-700"
+              >
+                {value !== "all" && (() => {
+                  const Icon = DIRECTION_CFG[value].icon;
+                  return <Icon size={12} className={DIRECTION_CFG[value].cls} />;
+                })()}
+                {label}
+                <span className="text-zinc-500">{count}</span>
+              </Button>
+            ))}
+          </div>
           <ReportCard title="Chamadas por Ramal" count={filteredExt.length} total={callsByExt.length} sheet={sheetByExtension(filteredExt)}>
             <Table>
               <TableHeader>
                 <TableRow className="border-zinc-800 hover:bg-transparent">
+                  <TableHead className="text-zinc-400">Tipo</TableHead>
                   <TableHead className="text-zinc-400">Ramal</TableHead>
                   <TableHead className="text-zinc-400">Número</TableHead>
                   <TableHead className="text-zinc-400">Resultado</TableHead>
@@ -362,9 +447,10 @@ export default function Relatorios() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredExt.length === 0 && <EmptyRow cols={5} total={callsByExt.length} loading={loading} />}
+                {filteredExt.length === 0 && <EmptyRow cols={6} total={callsByExt.length} loading={loading} />}
                 {filteredExt.slice(0, 200).map((item) => (
                   <TableRow key={`ext-${item.id}`} className="border-zinc-800 hover:bg-zinc-800/30 transition-colors">
+                    <TableCell><DirectionBadge item={item} /></TableCell>
                     <TableCell>
                       {item.Extension ? (
                         <Badge variant="outline" className="text-xs border-zinc-700 text-zinc-400">
