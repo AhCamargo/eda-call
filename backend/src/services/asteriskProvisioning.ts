@@ -32,6 +32,31 @@ const assertSafeConfigValue = (value: unknown, fieldName: string): string => {
   return text;
 };
 
+// Regras de horário vão para GotoIfTime() — só aceita o formato esperado
+// (HH:MM e dias como "mon-fri"/"sat"), nada que vire dialplan arbitrário.
+const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const DAYS_RE = /^(mon|tue|wed|thu|fri|sat|sun)(-(mon|tue|wed|thu|fri|sat|sun))?$/;
+
+const assertSafeScheduleJson = (scheduleJson: string | null | undefined) => {
+  if (!scheduleJson) return;
+  let rules: unknown;
+  try {
+    rules = JSON.parse(scheduleJson);
+  } catch {
+    throw new ConfigValidationError("Horário de atendimento inválido.");
+  }
+  if (!Array.isArray(rules)) {
+    throw new ConfigValidationError("Horário de atendimento inválido.");
+  }
+  for (const r of rules as any[]) {
+    if (!TIME_RE.test(String(r?.open)) || !TIME_RE.test(String(r?.close)) || !DAYS_RE.test(String(r?.days))) {
+      throw new ConfigValidationError(
+        "Horário de atendimento inválido: use horas no formato 08:00 e dias da lista.",
+      );
+    }
+  }
+};
+
 const buildExtensionBlock = (
   number: string,
   secret: string,
@@ -420,6 +445,13 @@ interface ScheduleRule {
   close: string;
 }
 
+// Grava a ligação recebida a partir do momento em que alguém atende ("b" =
+// só a parte conectada). O nome segue o padrão lido pelo
+// recordingsSyncService: DATA-HORA-UNIQUEID-QUEMLIGOU-DESTINO.wav
+const recordInboundLines = (destination: string) =>
+  ` same => n,Set(RECFILE=\${STRFTIME(\${EPOCH},,%Y%m%d-%H%M%S)}-\${UNIQUEID}-\${CALLERID(num)}-${destination}.wav)\n` +
+  ` same => n,MixMonitor(\${RECFILE},b)`;
+
 const buildInboundIvrDialplan = ({
   contextName,
   name,
@@ -461,14 +493,14 @@ const buildInboundIvrDialplan = ({
       }
       const target = String(opt.targetExtension).trim();
       if (opt.actionType === "transfer_queue") {
-        return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> fila ${target})\n same => n,Queue(${target},t,,,,60)\n same => n,Hangup()`;
+        return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> fila ${target})\n${recordInboundLines(target)}\n same => n,Queue(${target},t,,,,60)\n same => n,Hangup()`;
       }
-      return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> ${target})\n same => n,Dial(SIP/${target},30)\n same => n,Hangup()`;
+      return `exten => ${digit},1,NoOp(${contextName}: ${lbl} -> ${target})\n${recordInboundLines(target)}\n same => n,Dial(SIP/${target},30)\n same => n,Hangup()`;
     })
     .join("\n\n");
 
   const fallbackBlock = fallback
-    ? `exten => transbordo,1,NoOp(${contextName}: ${fbLabel} -> ${fallback})\n same => n,Dial(${tech}/${fallback},30)\n same => n,Hangup()`
+    ? `exten => transbordo,1,NoOp(${contextName}: ${fbLabel} -> ${fallback})\n${recordInboundLines(fallback)}\n same => n,Dial(${tech}/${fallback},30)\n same => n,Hangup()`
     : `exten => transbordo,1,NoOp(${contextName}: sem transbordo configurado)\n same => n,Hangup()`;
 
   // Bloco de horário de atendimento
@@ -543,6 +575,7 @@ export const upsertInboundIvrDialplan = async (params: {
     assertSafeConfigValue(params.fallbackLabel, "fallbackLabel");
   }
   assertSafeConfigValue(params.dialTechnology, "dialTechnology");
+  assertSafeScheduleJson(params.scheduleJson);
   if (params.closedAudioFile) {
     assertSafeConfigValue(params.closedAudioFile, "closedAudioFile");
   }
@@ -670,6 +703,15 @@ const buildInboundDidDialLine = (destinationType: string, destinationTarget: str
   return `Dial(SIP/${destinationTarget},30)`;
 };
 
+const buildInboundDidBlock = (did: string, destinationType: string, destinationTarget: string) =>
+  [
+    `exten => ${did},1,NoOp(InboundRoute: DID ${did} -> ${destinationType}:${destinationTarget})`,
+    // Central Telefônica grava no destino final; ramal/fila gravam aqui.
+    ...(destinationType === "ivr" ? [] : [recordInboundLines(destinationTarget)]),
+    ` same => n,${buildInboundDidDialLine(destinationType, destinationTarget)}`,
+    ` same => n,Hangup()`,
+  ].join("\n");
+
 export const upsertInboundDidRoute = async ({
   did,
   destinationType = "extension",
@@ -683,11 +725,10 @@ export const upsertInboundDidRoute = async ({
   assertSafeConfigValue(destinationType, "destinationType");
   assertSafeConfigValue(destinationTarget, "destinationTarget");
   await ensureInboundRoutesHeader();
-  const dialLine = buildInboundDidDialLine(destinationType, destinationTarget);
   await upsertNamedBlock({
     filePath: asteriskInboundRoutesFile,
     sectionName: did,
-    blockContent: `exten => ${did},1,NoOp(InboundRoute: DID ${did} -> ${destinationType}:${destinationTarget})\n same => n,${dialLine}\n same => n,Hangup()`,
+    blockContent: buildInboundDidBlock(did, destinationType, destinationTarget),
     scope: "inbound-did-route",
   });
   try {
@@ -715,11 +756,14 @@ export const reprovisionAllInboundDidRoutes = async (
       assertSafeConfigValue(route.did, "did");
       assertSafeConfigValue(route.destinationType ?? "extension", "destinationType");
       assertSafeConfigValue(route.destinationTarget, "destinationTarget");
-      const dialLine = buildInboundDidDialLine(route.destinationType ?? "extension", route.destinationTarget);
       await upsertNamedBlock({
         filePath: asteriskInboundRoutesFile,
         sectionName: route.did,
-        blockContent: `exten => ${route.did},1,NoOp(InboundRoute: DID ${route.did} -> ${route.destinationType ?? "extension"}:${route.destinationTarget})\n same => n,${dialLine}\n same => n,Hangup()`,
+        blockContent: buildInboundDidBlock(
+          route.did,
+          route.destinationType ?? "extension",
+          route.destinationTarget,
+        ),
         scope: "inbound-did-route",
       });
     } else {

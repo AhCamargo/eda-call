@@ -12,6 +12,7 @@ import { createRoutes } from "./routes";
 import { startAmiStatusMonitor } from "./services/amiStatusMonitor";
 import { startRecordingsSyncService } from "./services/recordingsSyncService";
 import { startUraReverseWorker } from "./services/uraReverseWorker";
+import { reprovisionInboundDialplans } from "./services/inboundReprovision";
 import { initStatusLogsFromCurrentState } from "./services/agentStatusLogger";
 
 const bootstrap = async () => {
@@ -53,6 +54,10 @@ const bootstrap = async () => {
   startAmiStatusMonitor(io);
   startRecordingsSyncService();
   startUraReverseWorker(io);
+  // Em segundo plano: não atrasa a subida da API se o Asterisk demorar.
+  reprovisionInboundDialplans().catch((error: any) =>
+    logger.error(`[InboundReprovision] Falhou: ${error.message}`),
+  );
 
   app.use(createRoutes(io));
 

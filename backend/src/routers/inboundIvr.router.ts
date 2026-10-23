@@ -75,6 +75,9 @@ export const createInboundIvrRouter = () => {
       fallbackLabel = "Transbordo",
       dialTechnology = "SIP",
       options = [],
+      scheduleEnabled = false,
+      scheduleJson = null,
+      closedAudioFile = null,
     } = req.body;
 
     if (!name || !contextName) {
@@ -86,7 +89,7 @@ export const createInboundIvrRouter = () => {
     });
     if (existing)
       return res.status(409).json({
-        message: `Já existe uma central com o contextName '${contextName}'. Escolha um nome de contexto diferente.`,
+        message: `Já existe uma central com o nome técnico '${contextName}'. Escolha outro nome para a central.`,
       });
 
     const ivr = (await InboundIvr.create({
@@ -99,6 +102,9 @@ export const createInboundIvrRouter = () => {
       fallbackExtension: fallbackExtension || null,
       fallbackLabel: fallbackLabel || "Transbordo",
       dialTechnology: dialTechnology || "SIP",
+      scheduleEnabled: Boolean(scheduleEnabled),
+      scheduleJson: scheduleJson || null,
+      closedAudioFile: closedAudioFile || null,
     })) as any;
 
     const createdOptions: any[] = [];
@@ -123,6 +129,9 @@ export const createInboundIvrRouter = () => {
       fallbackLabel: ivr.fallbackLabel,
       dialTechnology: ivr.dialTechnology,
       options: createdOptions,
+      scheduleEnabled: ivr.scheduleEnabled,
+      scheduleJson: ivr.scheduleJson,
+      closedAudioFile: ivr.closedAudioFile,
     });
 
     if (ivr.voipLineId) {

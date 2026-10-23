@@ -25,6 +25,8 @@ import {
   removeExtensionProvision,
   upsertQueue,
   removeQueue,
+  upsertInboundIvrDialplan,
+  upsertInboundDidRoute,
 } from "./asteriskProvisioning";
 import config from "../config";
 
@@ -101,5 +103,74 @@ describe("asteriskProvisioning", () => {
     const written = fileStore[config.asteriskQueuesCustomFile];
     expect(written).not.toContain("[suporte]");
     expect(written).toContain("[vendas]");
+  });
+
+  describe("ligações recebidas são gravadas", () => {
+    const baseIvr = {
+      contextName: "central-principal",
+      name: "Central principal",
+      digitTimeoutSeconds: 5,
+      maxInvalidAttempts: 3,
+      fallbackExtension: "2001",
+      fallbackLabel: "Recepção",
+      dialTechnology: "SIP",
+      options: [
+        { keyDigit: "1", label: "Vendas", actionType: "transfer_extension", targetExtension: "2002" },
+        { keyDigit: "2", label: "Suporte", actionType: "transfer_queue", targetExtension: "suporte" },
+        { keyDigit: "9", label: "Sair", actionType: "hangup", targetExtension: null },
+      ],
+    };
+
+    it("grava antes de transferir para ramal, fila e destino padrão", async () => {
+      await upsertInboundIvrDialplan(baseIvr);
+      const plan = fileStore[config.asteriskExtensionsCustomFile];
+
+      const branch = (exten: string) =>
+        plan.slice(plan.indexOf(`exten => ${exten},1`)).split("\n\n")[0];
+
+      for (const [exten, dest, dial] of [
+        ["1", "2002", "Dial(SIP/2002"],
+        ["2", "suporte", "Queue(suporte"],
+        ["transbordo", "2001", "Dial(SIP/2001"],
+      ]) {
+        const b = branch(exten);
+        expect(b).toContain(`-\${CALLERID(num)}-${dest}.wav)`);
+        expect(b.indexOf("MixMonitor(${RECFILE},b)")).toBeGreaterThan(-1);
+        expect(b.indexOf("MixMonitor")).toBeLessThan(b.indexOf(dial));
+      }
+      expect(branch("9")).not.toContain("MixMonitor");
+    });
+
+    it("roteamento de entrada para ramal grava; para a central não duplica", async () => {
+      await upsertInboundDidRoute({ did: "4431425388", destinationType: "extension", destinationTarget: "2002" });
+      await upsertInboundDidRoute({ did: "4430000000", destinationType: "ivr", destinationTarget: "central-principal" });
+      const routes = fileStore[config.asteriskInboundRoutesFile];
+      const block = (did: string) => routes.slice(routes.indexOf(`exten => ${did},1`)).split("; END")[0];
+      expect(block("4431425388")).toContain("MixMonitor(${RECFILE},b)");
+      expect(block("4430000000")).not.toContain("MixMonitor");
+    });
+
+    it("recusa horário de atendimento que tentaria injetar dialplan", async () => {
+      await expect(
+        upsertInboundIvrDialplan({
+          ...baseIvr,
+          scheduleEnabled: true,
+          scheduleJson: JSON.stringify([
+            { days: "mon-fri,*,*?x)\nexten => s,1,System(rm -rf /)", open: "08:00", close: "18:00" },
+          ]),
+        }),
+      ).rejects.toThrow(/Horário de atendimento inválido/);
+    });
+
+    it("aceita horário válido", async () => {
+      await upsertInboundIvrDialplan({
+        ...baseIvr,
+        scheduleEnabled: true,
+        scheduleJson: JSON.stringify([{ days: "mon-fri", open: "08:00", close: "18:00" }]),
+      });
+      expect(fileStore[config.asteriskExtensionsCustomFile]).toContain(
+        "GotoIfTime(08:00-18:00,mon-fri,*,*?horario_aberto)",
+      );
+    });
   });
 });

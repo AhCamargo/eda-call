@@ -44,15 +44,30 @@ const collectWavFiles = async (dirPath: string): Promise<string[]> => {
 };
 
 // Filename format from dialplan: YYYYMMDD-HHMMSS-UNIQUEID-CALLER-CALLEE.wav
-const parseRecordingFilename = (filePath: string) => {
+export const parseRecordingFilename = (filePath: string) => {
   const base = path.basename(filePath, path.extname(filePath));
   const parts = base.split("-");
-  // parts[0]=date, parts[1]=time, parts[2]=uniqueid, parts[3]=caller, parts[4]=callee
+  // parts[0]=date, parts[1]=time, parts[2]=uniqueid, resto = CALLER-CALLEE
   return {
     uniqueId: parts.length >= 3 ? parts[2] : null,
-    callerNumber: parts.length >= 4 ? parts[3] : null,
-    calleeNumber: parts.length >= 5 ? parts[4] : null,
+    // Ramais podem ter hífen (ex.: C1-1000), então o resto é mantido inteiro
+    // e a divisão quem ligou/destino é resolvida contra os ramais existentes.
+    rest: parts.slice(3),
   };
+};
+
+// Quem ligou é preferido (ligação feita por um ramal); se não for ramal
+// (ligação recebida de fora), usa o destino.
+export const findExtensionNumber = (rest: string[], known: Set<string>): string | null => {
+  for (let i = 1; i < rest.length; i += 1) {
+    const caller = rest.slice(0, i).join("-");
+    if (known.has(caller)) return caller;
+  }
+  for (let i = 1; i < rest.length; i += 1) {
+    const callee = rest.slice(i).join("-");
+    if (known.has(callee)) return callee;
+  }
+  return null;
 };
 
 const initKnownFilePaths = async (): Promise<Set<string>> => {
@@ -68,6 +83,8 @@ const syncRecordingsFromDisk = async () => {
   const wavFiles = await collectWavFiles(asteriskRecordingsDir);
   if (!wavFiles.length) return;
 
+  let extensionsByNumber: Map<string, number> | null = null;
+
   for (const filePath of wavFiles) {
     if (knownFilePaths.has(filePath)) continue;
 
@@ -81,14 +98,14 @@ const syncRecordingsFromDisk = async () => {
     if (Date.now() - stat.mtimeMs < STABLE_MS) continue; // ainda gravando
 
     const durationSeconds = await wavDurationSeconds(filePath).catch(() => 0);
-    const { uniqueId, callerNumber, calleeNumber } = parseRecordingFilename(filePath);
+    const { uniqueId, rest } = parseRecordingFilename(filePath);
 
-    let extensionId: number | null = null;
-    const extNumber = callerNumber || calleeNumber;
-    if (extNumber) {
-      const ext = await (Extension as any).findOne({ where: { number: extNumber } }) as any;
-      if (ext) extensionId = ext.id;
+    if (!extensionsByNumber) {
+      const all = (await Extension.findAll({ attributes: ["id", "number"], raw: true })) as any[];
+      extensionsByNumber = new Map(all.map((e) => [String(e.number), e.id]));
     }
+    const extNumber = findExtensionNumber(rest, new Set(extensionsByNumber.keys()));
+    const extensionId = extNumber ? extensionsByNumber.get(extNumber) ?? null : null;
 
     try {
       await CallRecording.create({
