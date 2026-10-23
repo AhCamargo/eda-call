@@ -7,38 +7,31 @@ import {
   Extension,
   VoipLine,
 } from "../db";
-import { originateCall, getAmiClient } from "../ami";
+import {
+  originateCall,
+  newActionId,
+  watchOriginate,
+  waitForHangup,
+  OriginateOutcome,
+} from "../ami";
 
 const runningCampaigns = new Set<number>();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const CAUSE_TO_RESULT: Record<number, string> = {
-  16: "atendida",
-  1: "numero_nao_existe",
-  17: "rejeitada",
-  21: "rejeitada",
+// Tempo para o Asterisk dizer se atendeu (toque padrão de 30s + folga).
+const ORIGINATE_TIMEOUT_MS = 60_000;
+// Uma ligação atendida segura a campanha até terminar (no máximo isto).
+const MAX_CALL_MS = 2 * 60 * 60_000;
+
+const OUTCOME_TO_RESULT: Record<OriginateOutcome, string> = {
+  answered: "atendida",
+  no_answer: "nao_atendida",
+  failed: "nao_atendida",
+  busy: "rejeitada",
+  rejected: "rejeitada",
+  invalid: "numero_nao_existe",
 };
-
-const waitForHangup = (uniqueid: string, timeoutMs = 60000): Promise<string> =>
-  new Promise((resolve) => {
-    const ami = getAmiClient();
-    const timer = setTimeout(() => {
-      ami.removeListener("managerevent", handler);
-      resolve("nao_atendida");
-    }, timeoutMs);
-
-    const handler = (event: any) => {
-      if (event.Event !== "Hangup") return;
-      if (event.Uniqueid !== uniqueid && event.Linkedid !== uniqueid) return;
-      clearTimeout(timer);
-      ami.removeListener("managerevent", handler);
-      const cause = Number(event.Cause ?? event.cause ?? 0);
-      resolve(CAUSE_TO_RESULT[cause] ?? "nao_atendida");
-    };
-
-    ami.on("managerevent", handler);
-  });
 
 export const runCampaign = async (campaignId: number, io: Server) => {
   if (runningCampaigns.has(campaignId)) {
@@ -81,19 +74,23 @@ export const runCampaign = async (campaignId: number, io: Server) => {
         ? campaign.voipLines[index % campaign.voipLines.length]
         : null;
 
-      let uniqueid: string | null = null;
+      const actionId = newActionId(`dialer-${campaign.id}`);
+      const watch = watchOriginate(actionId, ORIGINATE_TIMEOUT_MS);
+      let result = "nao_atendida";
       try {
-        const response: any = await originateCall(
+        await originateCall(
           contact.phoneNumber,
           extension?.number || "1000",
           voipLine?.name || null,
+          actionId,
         );
-        uniqueid = response?.Uniqueid ?? response?.uniqueid ?? null;
-      } catch {}
-
-      const result = uniqueid
-        ? await waitForHangup(uniqueid, 60000)
-        : "nao_atendida";
+        const { outcome, uniqueid } = await watch.result;
+        result = OUTCOME_TO_RESULT[outcome];
+        // Só passa para o próximo número quando esta ligação terminar.
+        if (outcome === "answered" && uniqueid) await waitForHangup(uniqueid, MAX_CALL_MS);
+      } catch {
+        watch.cancel();
+      }
       const callLog = await CallLog.create({
         campaignId: campaign.id,
         extensionId: extension?.id || null,
@@ -114,10 +111,10 @@ export const runCampaign = async (campaignId: number, io: Server) => {
         result,
       });
 
+      // A ligação já terminou aqui; o ramal volta a ficar disponível para a
+      // campanha (o status "em ligação" ao vivo vem do amiStatusMonitor).
       if (extension) {
-        await extension.update({
-          status: result === "atendida" ? "in_call" : "online",
-        });
+        await extension.update({ status: "in_campaign" });
       }
 
       io.emit("call:update", {

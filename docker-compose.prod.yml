@@ -34,6 +34,10 @@ services:
       AMI_PORT: 5038
       AMI_USERNAME: ${AMI_USERNAME:?defina AMI_USERNAME no .env (deve coincidir com manager.conf)}
       AMI_PASSWORD: ${AMI_PASSWORD}
+      # O Asterisk roda no host (fora do Docker) e chama o backend de volta no
+      # fim da URA reversa — "backend" só resolve dentro da rede Docker, então
+      # usa a porta publicada no host.
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://127.0.0.1:5000}
       ASTERISK_SIP_CUSTOM_FILE: /etc/asterisk-custom/sip_custom.conf
       ASTERISK_EXTENSIONS_CUSTOM_FILE: /etc/asterisk-custom/extensions_custom.conf
       ASTERISK_QUEUES_CUSTOM_FILE: /etc/asterisk-custom/queues_custom.conf

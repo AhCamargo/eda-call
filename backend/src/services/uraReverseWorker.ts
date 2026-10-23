@@ -7,7 +7,13 @@ import {
   UraReverseOption,
   VoipLine,
 } from "../db";
-import { originateReverseIvr } from "../ami";
+import {
+  originateReverseIvr,
+  newActionId,
+  watchOriginate,
+  waitForHangup,
+  OriginateOutcome,
+} from "../ami";
 
 const runningState: {
   io: Server | null;
@@ -19,7 +25,6 @@ const runningState: {
   activeByCampaign: new Map(),
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isPhoneValid = (phone: any) => /^\d{10,14}$/.test(String(phone || "").trim());
 
@@ -121,6 +126,16 @@ const buildOptionMaps = (options: any[]) => {
   return { actionMap, targetMap };
 };
 
+const MAX_ANSWERED_CALL_MS = 15 * 60_000;
+
+const OUTCOME_TO_STATUS: Record<Exclude<OriginateOutcome, "answered">, string> = {
+  no_answer: "no_answer",
+  failed: "no_answer",
+  rejected: "no_answer",
+  busy: "busy",
+  invalid: "invalid",
+};
+
 const processContact = async (campaign: any, contact: any, options: any[]) => {
   const activeSet = runningState.activeByCampaign.get(campaign.id) || new Set<number>();
   activeSet.add(contact.id);
@@ -143,8 +158,12 @@ const processContact = async (campaign: any, contact: any, options: any[]) => {
 
   const { actionMap, targetMap } = buildOptionMaps(options);
 
+  const actionId = newActionId(`ura-${campaign.id}-${contact.id}`);
+  const watch = watchOriginate(actionId, (campaign.callTimeoutSeconds + 15) * 1000);
+
   try {
     await originateReverseIvr({
+      actionId,
       phoneNumber: contact.phoneNumber,
       voipLineName: line?.name || null,
       targetExtension: "2001",
@@ -185,6 +204,7 @@ const processContact = async (campaign: any, contact: any, options: any[]) => {
       },
     });
   } catch (error: any) {
+    watch.cancel();
     const nextStatus =
       contact.attempts < campaign.maxAttempts ? "pending" : "busy";
     await markContactResult({
@@ -197,20 +217,30 @@ const processContact = async (campaign: any, contact: any, options: any[]) => {
     return;
   }
 
-  const waitMs =
-    (campaign.callTimeoutSeconds + campaign.digitTimeoutSeconds + 2) * 1000;
-  await sleep(waitMs);
+  // O resultado vem do próprio Asterisk (OriginateResponse). O callback do
+  // dialplan (/internal/ura/log) só complementa com a opção digitada.
+  const { outcome, uniqueid } = await watch.result;
+  const freshContact = (await UraReverseContact.findByPk(contact.id)) as any;
 
-  const freshContact = await UraReverseContact.findByPk(contact.id) as any;
-  if (freshContact && freshContact.status === "calling") {
-    const nextStatus =
-      freshContact.attempts < campaign.maxAttempts ? "pending" : "no_answer";
-
+  if (outcome === "answered") {
+    if (freshContact && freshContact.status === "calling") {
+      await markContactResult({
+        contactId: freshContact.id,
+        campaignId: campaign.id,
+        status: "answered",
+        result: "atendeu",
+      });
+    }
+    // Ocupa a vaga de "ligações simultâneas" até a ligação terminar.
+    if (uniqueid) await waitForHangup(uniqueid, MAX_ANSWERED_CALL_MS);
+  } else if (freshContact && freshContact.status === "calling") {
+    const finalStatus = OUTCOME_TO_STATUS[outcome];
+    const retry = outcome !== "invalid" && freshContact.attempts < campaign.maxAttempts;
     await markContactResult({
       contactId: freshContact.id,
       campaignId: campaign.id,
-      status: nextStatus,
-      result: nextStatus,
+      status: retry ? "pending" : finalStatus,
+      result: finalStatus,
     });
   }
 
@@ -328,7 +358,8 @@ export const handleUraReverseDtmfEvent = async ({
   let status = "answered";
   if (normalizedResult.includes("busy")) status = "busy";
   if (normalizedResult.includes("hangup")) status = "hangup";
-  if (normalizedResult.includes("sem_opcao")) status = "no_answer";
+  // "sem_opcao": a pessoa atendeu e ouviu a mensagem, só não digitou nada.
+  if (normalizedResult.includes("sem_opcao")) status = "answered";
   if (normalizedResult.includes("invalid")) status = "invalid";
 
   await markContactResult({

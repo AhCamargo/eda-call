@@ -24,10 +24,87 @@ export const getAmiClient = () => {
   return amiClient;
 };
 
+// ── Resultado real de um Originate assíncrono ────────────────────────────
+// Com Async: true a resposta da ação só diz "queued"; o desfecho chega depois
+// no evento OriginateResponse (mesmo ActionID). Atenção: o asterisk-manager
+// entrega os campos dos eventos em minúsculas (event.event, event.reason,
+// event.uniqueid) — nunca Event/Reason/Uniqueid.
+export type OriginateOutcome =
+  | "answered"
+  | "no_answer"
+  | "busy"
+  | "rejected"
+  | "invalid"
+  | "failed";
+
+// Campo Reason do OriginateResponse (códigos AST_CONTROL_* do Asterisk).
+const REASON_TO_OUTCOME: Record<number, OriginateOutcome> = {
+  4: "answered",
+  3: "no_answer", // tocou até o tempo limite
+  5: "busy",
+  1: "rejected", // desligou/recusou antes de atender
+  8: "invalid", // congestionamento: número inexistente ou rota indisponível
+  0: "failed",
+};
+
+export const newActionId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+// Registre ANTES de enviar o Originate para não perder o evento.
+export const watchOriginate = (actionId: string, timeoutMs: number) => {
+  const client = getAmiClient();
+  let handler: (event: any) => void = () => {};
+  let timer: ReturnType<typeof setTimeout>;
+  const cancel = () => {
+    clearTimeout(timer);
+    client.removeListener("managerevent", handler);
+  };
+  const result = new Promise<{ outcome: OriginateOutcome; uniqueid: string | null }>(
+    (resolve) => {
+      timer = setTimeout(() => {
+        cancel();
+        resolve({ outcome: "no_answer", uniqueid: null });
+      }, timeoutMs);
+      handler = (event: any) => {
+        if (String(event.event || "").toLowerCase() !== "originateresponse") return;
+        if (String(event.actionid || "") !== actionId) return;
+        cancel();
+        const answered = String(event.response || "").toLowerCase() === "success";
+        const outcome = answered
+          ? "answered"
+          : REASON_TO_OUTCOME[Number(event.reason)] ?? "failed";
+        const uid = String(event.uniqueid || "");
+        resolve({ outcome, uniqueid: uid && uid !== "<null>" ? uid : null });
+      };
+      client.on("managerevent", handler);
+    },
+  );
+  return { result, cancel };
+};
+
+// Espera a ligação terminar (evento Hangup do canal).
+export const waitForHangup = (uniqueid: string, timeoutMs: number) =>
+  new Promise<void>((resolve) => {
+    const client = getAmiClient();
+    const handler = (event: any) => {
+      if (String(event.event || "").toLowerCase() !== "hangup") return;
+      if (event.uniqueid !== uniqueid && event.linkedid !== uniqueid) return;
+      done();
+    };
+    const timer = setTimeout(() => done(), timeoutMs);
+    const done = () => {
+      clearTimeout(timer);
+      client.removeListener("managerevent", handler);
+      resolve();
+    };
+    client.on("managerevent", handler);
+  });
+
 export const originateCall = (
   phoneNumber: string,
   extensionNumber = "1000",
   voipLineName: string | null = null,
+  actionId?: string,
 ) => {
   const client = getAmiClient();
   const channel = voipLineName
@@ -44,6 +121,7 @@ export const originateCall = (
         Priority: 1,
         CallerID: extensionNumber,
         Async: true,
+        ...(actionId ? { actionid: actionId } : {}),
       },
       (err: any, response: any) => {
         if (err) return reject(err);
@@ -85,6 +163,7 @@ export const originateReverseIvr = ({
   digitTimeoutSeconds = 5,
   extraVariables = {},
   uraRef,
+  actionId,
 }: {
   phoneNumber: string;
   voipLineName?: string | null;
@@ -100,6 +179,7 @@ export const originateReverseIvr = ({
   digitTimeoutSeconds?: number;
   extraVariables?: Record<string, any>;
   uraRef: string;
+  actionId?: string;
 }) => {
   const client = getAmiClient();
   const channel = voipLineName
@@ -140,6 +220,7 @@ export const originateReverseIvr = ({
         Async: true,
         Timeout: Number(timeoutMs) || 30000,
         Variable: vars,
+        ...(actionId ? { actionid: actionId } : {}),
       },
       (err: any, response: any) => {
         if (err) return reject(err);

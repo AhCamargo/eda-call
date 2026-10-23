@@ -1,30 +1,25 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import type { Server } from "socket.io";
 
-const { originateCall, getAmiClient, queueManagerEvent, resetManagerEventQueue } = vi.hoisted(() => {
-  let queuedEvent: any = null;
-  const fakeAmi = {
-    on: (_event: string, handler: (event: any) => void) => {
-      if (queuedEvent) {
-        const event = queuedEvent;
-        queuedEvent = null;
-        handler(event);
-      }
-    },
-    removeListener: () => {},
-  };
+const { originateCall, watchOriginate, waitForHangup, nextOutcome } = vi.hoisted(() => {
+  // Desfecho que o próximo OriginateResponse vai trazer (padrão: não atendeu).
+  const nextOutcome = { value: { outcome: "no_answer", uniqueid: null as string | null } };
   return {
+    nextOutcome,
     originateCall: vi.fn().mockResolvedValue(undefined),
-    getAmiClient: vi.fn(() => fakeAmi),
-    queueManagerEvent: (event: any) => {
-      queuedEvent = event;
-    },
-    resetManagerEventQueue: () => {
-      queuedEvent = null;
-    },
+    watchOriginate: vi.fn(() => ({
+      result: Promise.resolve(nextOutcome.value),
+      cancel: vi.fn(),
+    })),
+    waitForHangup: vi.fn().mockResolvedValue(undefined),
   };
 });
-vi.mock("../ami", () => ({ originateCall, getAmiClient }));
+vi.mock("../ami", () => ({
+  originateCall,
+  watchOriginate,
+  waitForHangup,
+  newActionId: (prefix: string) => `${prefix}-test`,
+}));
 
 const { Campaign, CallLog, UraLog } = vi.hoisted(() => ({
   Campaign: { findByPk: vi.fn() },
@@ -69,7 +64,8 @@ describe("runCampaign", () => {
     UraLog.create.mockClear();
     UraLog.create.mockResolvedValue({});
     Campaign.findByPk.mockClear();
-    resetManagerEventQueue();
+    waitForHangup.mockClear();
+    nextOutcome.value = { outcome: "no_answer", uniqueid: null };
   });
 
   it("completes immediately when the campaign has no contacts", async () => {
@@ -126,37 +122,30 @@ describe("runCampaign", () => {
     expect(Campaign.findByPk).toHaveBeenCalledTimes(1);
   });
 
-  it("records the real result from the matching AMI Hangup event", async () => {
-    originateCall.mockResolvedValueOnce({ Uniqueid: "uniq-1" });
-    queueManagerEvent({ Event: "Hangup", Uniqueid: "uniq-1", Cause: 16 });
+  it("marks answered from the OriginateResponse and waits for the call to end", async () => {
+    nextOutcome.value = { outcome: "answered", uniqueid: "77.1" };
     const campaign = makeCampaign({ contacts: [{ phoneNumber: "555" }] });
     Campaign.findByPk.mockResolvedValue(campaign);
 
     await runCampaign(6, makeIo());
 
-    expect(CallLog.create.mock.calls[0][0]).toMatchObject({
-      phoneNumber: "555",
-      result: "atendida",
-    });
+    expect(originateCall.mock.calls[0][3]).toBe("dialer-1-test");
+    expect(CallLog.create.mock.calls[0][0]).toMatchObject({ phoneNumber: "555", result: "atendida" });
+    expect(waitForHangup).toHaveBeenCalledWith("77.1", expect.any(Number));
   });
 
-  it("falls back to nao_atendida when no Hangup event arrives before the timeout", async () => {
-    vi.useFakeTimers();
-    try {
-      originateCall.mockResolvedValueOnce({ Uniqueid: "uniq-2" });
-      const campaign = makeCampaign({ contacts: [{ phoneNumber: "666" }] });
-      Campaign.findByPk.mockResolvedValue(campaign);
+  it.each([
+    ["no_answer", "nao_atendida"],
+    ["busy", "rejeitada"],
+    ["invalid", "numero_nao_existe"],
+  ])("maps outcome %s to %s", async (outcome, expected) => {
+    nextOutcome.value = { outcome, uniqueid: null };
+    const campaign = makeCampaign({ contacts: [{ phoneNumber: "666" }] });
+    Campaign.findByPk.mockResolvedValue(campaign);
 
-      const promise = runCampaign(7, makeIo());
-      await vi.advanceTimersByTimeAsync(60000);
-      await promise;
+    await runCampaign(7, makeIo());
 
-      expect(CallLog.create.mock.calls[0][0]).toMatchObject({
-        phoneNumber: "666",
-        result: "nao_atendida",
-      });
-    } finally {
-      vi.useRealTimers();
-    }
+    expect(CallLog.create.mock.calls[0][0]).toMatchObject({ result: expected });
+    expect(waitForHangup).not.toHaveBeenCalled();
   });
 });

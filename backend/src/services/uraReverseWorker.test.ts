@@ -4,7 +4,12 @@ import type { Server } from "socket.io";
 const { originateReverseIvr } = vi.hoisted(() => ({
   originateReverseIvr: vi.fn().mockResolvedValue(undefined),
 }));
-vi.mock("../ami", () => ({ originateReverseIvr }));
+vi.mock("../ami", () => ({
+  originateReverseIvr,
+  newActionId: (p: string) => `${p}-test`,
+  watchOriginate: vi.fn(() => ({ result: Promise.resolve({ outcome: "no_answer", uniqueid: null }), cancel: vi.fn() })),
+  waitForHangup: vi.fn().mockResolvedValue(undefined),
+}));
 
 const { UraReverseCampaign, UraReverseContact, UraReverseOption, VoipLine, sequelize } = vi.hoisted(() => ({
   UraReverseCampaign: { findByPk: vi.fn(), findAll: vi.fn() },
@@ -161,7 +166,7 @@ describe("uraReverseWorker", () => {
     expect(contact.status).toBe("hangup");
   });
 
-  it("marks the contact as no_answer when the result mentions sem_opcao", async () => {
+  it("keeps the contact as answered when they picked up but pressed nothing (sem_opcao)", async () => {
     UraReverseCampaign.findByPk.mockResolvedValue({ id: 1 });
     const contact = makeContact();
     UraReverseContact.findByPk.mockResolvedValue(contact);
@@ -173,6 +178,6 @@ describe("uraReverseWorker", () => {
       result: "sem_opcao_selecionada",
     });
 
-    expect(contact.status).toBe("no_answer");
+    expect(contact.status).toBe("answered");
   });
 });
