@@ -17,6 +17,50 @@ import { parseQueueShow, LiveQueue } from "../utils/queueShow";
 
 const AMI_TIMEOUT_MS = 2000;
 
+// Indicadores de hoje a partir do CDR (CallLog com direction preenchida =
+// ligações reais registradas pelo Asterisk; o discador grava as suas sem
+// direction, então não entram em dobro).
+const readTodayQuality = async () => {
+  const since = new Date();
+  since.setHours(0, 0, 0, 0);
+  const rows = (await CallLog.findAll({
+    where: { createdAt: { [Op.gte]: since }, direction: { [Op.ne]: null } },
+    attributes: [
+      "direction",
+      "result",
+      [sequelize.fn("COUNT", sequelize.col("id")), "count"],
+    ],
+    group: ["direction", "result"],
+    raw: true,
+  })) as unknown as Array<{ direction: string; result: string; count: string }>;
+
+  let total = 0;
+  let answered = 0;
+  let inbound = 0;
+  let inboundAnswered = 0;
+  for (const r of rows) {
+    const n = Number(r.count);
+    total += n;
+    if (r.result === "atendida") answered += n;
+    if (r.direction === "inbound") {
+      inbound += n;
+      if (r.result === "atendida") inboundAnswered += n;
+    }
+  }
+  const pct = (part: number, whole: number) => (whole ? Math.round((part / whole) * 100) : 0);
+  return {
+    total,
+    answered,
+    notAnswered: total - answered,
+    inbound,
+    inboundNotAnswered: inbound - inboundAnswered,
+    // SLA = ligações atendidas sobre o total de hoje.
+    slaPercent: pct(answered, total),
+    // Abandono = ligações recebidas que ninguém atendeu.
+    abandonPercent: pct(inbound - inboundAnswered, inbound),
+  };
+};
+
 const readLiveQueues = async (): Promise<LiveQueue[] | null> => {
   try {
     const response = await Promise.race([
@@ -60,7 +104,7 @@ export const createDashboardRouter = () => {
   // Visão ao vivo do Painel: filas recebendo ligação, discador rodando e
   // URAs reversas ativas.
   router.get("/dashboard/live", requireSupervisor, async (_, res: Response) => {
-    const [queues, live, extensions, dialer, ura] = await Promise.all([
+    const [queues, live, extensions, dialer, ura, today] = await Promise.all([
       AsteriskQueue.findAll({ attributes: ["id", "name"], order: [["name", "ASC"]] }) as Promise<any[]>,
       readLiveQueues(),
       Extension.findAll({ attributes: ["number", "name"], raw: true }) as Promise<any[]>,
@@ -69,6 +113,7 @@ export const createDashboardRouter = () => {
         where: { status: { [Op.in]: ["running", "paused"] } },
         attributes: ["id", "name", "status"],
       }) as Promise<any[]>,
+      readTodayQuality(),
     ]);
 
     const extName = new Map(extensions.map((e) => [String(e.number), e.name]));
@@ -134,6 +179,7 @@ export const createDashboardRouter = () => {
       }),
       dialerCampaigns,
       uraCampaigns,
+      today,
     });
   });
 

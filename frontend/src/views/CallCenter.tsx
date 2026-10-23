@@ -66,7 +66,7 @@ function KpiCard({ icon: Icon, label, value, sub, color = 'text-primary', alert 
 }
 
 export default function CallCenter() {
-  const { statusCounts, extensions, reports } = usePbx();
+  const { statusCounts, extensions } = usePbx();
   const live = useLiveOverview();
   // Pessoas realmente esperando nas filas (antes usava ramais "tocando").
   const waitingInQueues = live
@@ -99,12 +99,13 @@ export default function CallCenter() {
     });
   }, [statusCounts, waitingInQueues]);
 
-  // Métricas calculadas
-  const totalAnswered = reports.quemAtendeu || 0;
-  const totalInvalid = reports.numeroNaoExiste || 0;
-  const totalCalls = totalAnswered + totalInvalid + (statusCounts.in_call || 0) + (statusCounts.ringing || 0);
-  const sla = totalCalls > 0 ? Math.round((totalAnswered / totalCalls) * 100) : 0;
-  const abandonRate = totalCalls > 0 ? Math.round((totalInvalid / totalCalls) * 100) : 0;
+  // Indicadores de hoje (registro de ligações do Asterisk), atualizados a
+  // cada 5s junto com a visão ao vivo.
+  const today = live?.today;
+  const totalAnswered = today?.answered ?? 0;
+  const totalInvalid = today?.notAnswered ?? 0;
+  const sla = today?.slaPercent ?? 0;
+  const abandonRate = today?.abandonPercent ?? 0;
   const queueAlert = waitingInQueues > 3;
 
   const activeCalls = statusCounts.in_call || 0;
@@ -172,7 +173,7 @@ export default function CallCenter() {
           icon={TrendingUp}
           label="SLA"
           value={`${sla}%`}
-          sub={`Taxa de abandono: ${abandonRate}%`}
+          sub={today?.total ? `${totalAnswered} de ${today.total} atendidas hoje` : 'Nenhuma ligação hoje'}
           color={sla >= 80 ? 'text-green-400' : sla >= 60 ? 'text-amber-400' : 'text-red-400'}
         />
       </div>
@@ -277,7 +278,7 @@ export default function CallCenter() {
           <CardContent className="space-y-4">
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-zinc-400">SLA de atendimento</span>
+                <span className="text-zinc-400" title="Ligações de hoje que foram atendidas">SLA de atendimento (hoje)</span>
                 <span className={sla >= 80 ? 'text-green-400' : sla >= 60 ? 'text-amber-400' : 'text-red-400'}>
                   {sla}%
                 </span>
@@ -287,7 +288,7 @@ export default function CallCenter() {
 
             <div>
               <div className="flex justify-between text-xs mb-1">
-                <span className="text-zinc-400">Taxa de abandono</span>
+                <span className="text-zinc-400" title="Ligações recebidas hoje que ninguém atendeu">Taxa de abandono (hoje)</span>
                 <span className={abandonRate <= 10 ? 'text-green-400' : abandonRate <= 20 ? 'text-amber-400' : 'text-red-400'}>
                   {abandonRate}%
                 </span>
@@ -298,13 +299,13 @@ export default function CallCenter() {
             <div className="pt-2 border-t border-zinc-800 space-y-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-zinc-400">
-                  <CheckCircle2 size={13} className="text-green-400" /> Atendidas
+                  <CheckCircle2 size={13} className="text-green-400" /> Atendidas hoje
                 </span>
                 <span className="font-semibold">{totalAnswered}</span>
               </div>
               <div className="flex items-center justify-between text-xs">
                 <span className="flex items-center gap-1.5 text-zinc-400">
-                  <XCircle size={13} className="text-red-400" /> Não atendidas
+                  <XCircle size={13} className="text-red-400" /> Não atendidas hoje
                 </span>
                 <span className="font-semibold">{totalInvalid}</span>
               </div>

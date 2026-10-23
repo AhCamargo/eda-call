@@ -367,6 +367,16 @@ const handleCdrEvent = async (event: any) => {
   });
 };
 
+// O asterisk-manager entrega os campos dos eventos em minúsculas
+// (event.channel, event.uniqueid), mas este monitor lê os nomes do protocolo
+// AMI (event.Channel, event.UniqueID). Sem esta ponte nenhum campo existia e
+// o registro de ligações (CDR) e os status por evento nunca funcionavam.
+export const withAmiFieldNames = (event: any) =>
+  new Proxy(event, {
+    get: (target, key) =>
+      typeof key === "string" && !(key in target) ? target[key.toLowerCase()] : target[key],
+  });
+
 export const startAmiStatusMonitor = (io: Server) => {
   if (started) {
     return;
@@ -375,7 +385,8 @@ export const startAmiStatusMonitor = (io: Server) => {
   started = true;
   const client = getAmiClient();
 
-  client.on("managerevent", async (event: any) => {
+  client.on("managerevent", async (rawEvent: any) => {
+    const event = withAmiFieldNames(rawEvent);
     try {
       const eventName = String(event.Event || "").toLowerCase();
 

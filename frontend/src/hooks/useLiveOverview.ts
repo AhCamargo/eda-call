@@ -31,6 +31,16 @@ export interface LiveOverview {
     calling: number;
     answered: number;
   }[];
+  /** Indicadores de hoje calculados do registro de ligações (CDR). */
+  today: {
+    total: number;
+    answered: number;
+    notAnswered: number;
+    inbound: number;
+    inboundNotAnswered: number;
+    slaPercent: number;
+    abandonPercent: number;
+  };
 }
 
 const POLL_MS = 5000;
