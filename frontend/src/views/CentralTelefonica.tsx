@@ -102,6 +102,23 @@ function toContextName(name: string): string {
     .replace(/^-|-$/g, "");
 }
 
+// Máscara de telefone BR enquanto digita: (44) 3142-5388 / (44) 93142-5388.
+function formatPhoneBR(value: string): string {
+  const d = value.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 2) return d ? `(${d}` : "";
+  const ddd = d.slice(0, 2);
+  const rest = d.slice(2);
+  if (rest.length <= 4) return `(${ddd}) ${rest}`;
+  const split = rest.length === 9 ? 5 : 4;
+  return `(${ddd}) ${rest.slice(0, split)}-${rest.slice(split)}`;
+}
+
+// Nome técnico (contexto do Asterisk): "central-4431425388" a partir do número.
+function contextFromName(name: string): string {
+  const digits = name.replace(/\D/g, "");
+  return digits.length >= 8 ? `central-${digits}` : toContextName(name);
+}
+
 function FieldRow({
   label,
   hint,
@@ -279,16 +296,17 @@ function IvrDialog({
   const setField = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
 
-  // O nome técnico (contexto do Asterisk) acompanha o nome digitado até que
-  // alguém o edite manualmente em "Ajustes técnicos".
-  const handleNameChange = (name: string) => {
+  // O nome técnico (contexto do Asterisk) acompanha o número digitado até
+  // que alguém o edite manualmente em "Ajustes técnicos".
+  const handleNumberChange = (typed: string) => {
+    const name = formatPhoneBR(typed);
     setForm((p) => ({
       ...p,
       name,
       contextName:
-        p.contextName && p.contextName !== toContextName(p.name ?? "")
+        p.contextName && p.contextName !== contextFromName(p.name ?? "")
           ? p.contextName
-          : toContextName(name),
+          : contextFromName(name),
     }));
   };
 
@@ -373,11 +391,15 @@ function IvrDialog({
         <div className="grid gap-5 py-2">
           {/* 1. Identificação */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldRow label="Nome *" hint="Só para você reconhecer.">
+            <FieldRow
+              label="Número da linha *"
+              hint="O número que os clientes discam para chegar nesta central."
+            >
               <input
                 value={form.name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="Atendimento principal"
+                onChange={(e) => handleNumberChange(e.target.value)}
+                placeholder="(44) 3142-5388"
+                inputMode="tel"
                 className={inputCls()}
               />
             </FieldRow>
@@ -714,12 +736,12 @@ function IvrDialog({
               </FieldRow>
               <FieldRow
                 label="Contexto (Asterisk)"
-                hint="Gerado a partir do nome."
+                hint="Gerado a partir do número."
               >
                 <input
                   value={form.contextName}
                   onChange={(e) => setField("contextName", e.target.value)}
-                  placeholder="atendimento-principal"
+                  placeholder="central-4431425388"
                   className={inputCls()}
                 />
               </FieldRow>
