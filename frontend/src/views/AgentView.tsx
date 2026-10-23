@@ -180,6 +180,11 @@ export default function AgentView() {
   const isRinging =
     sip.callState === "ringing_in" || selectedExt?.status === "ringing";
   const isCallingOut = sip.callState === "ringing_out";
+  // A ligação pode estar num aparelho/app (status do ramal via AMI) e não no
+  // navegador. Só mostra controles quando há sessão no softphone do navegador
+  // — senão os botões não teriam efeito.
+  const callInBrowser = sip.callState === "in_call";
+  const ringingInBrowser = sip.callState === "ringing_in";
   const isPaused = selectedExt?.status === "paused";
 
   const statusCfg = selectedExt
@@ -342,6 +347,13 @@ export default function AgentView() {
                   </p>
                 </div>
                 <Separator className="bg-zinc-800" />
+                {!callInBrowser ? (
+                  <p className="text-center text-xs text-zinc-500">
+                    Ligação no telefone do ramal — use o aparelho para
+                    transferir, colocar em espera ou encerrar.
+                  </p>
+                ) : (
+                <>
                 <div className="flex gap-2 justify-center">
                   <Button
                     variant="outline"
@@ -379,6 +391,8 @@ export default function AgentView() {
                   <PhoneOff size={16} />
                   Encerrar chamada
                 </Button>
+                </>
+                )}
               </>
             )}
 
@@ -394,6 +408,9 @@ export default function AgentView() {
                   <Phone size={28} className="text-blue-400" />
                 </div>
                 <p className="text-blue-400 font-medium">Chamada recebida</p>
+                {!ringingInBrowser ? (
+                  <p className="text-xs text-zinc-500 mt-3">Atenda no telefone do ramal.</p>
+                ) : (
                 <div className="flex gap-2 mt-4 justify-center">
                   <Button
                     size="sm"
@@ -413,6 +430,7 @@ export default function AgentView() {
                     Rejeitar
                   </Button>
                 </div>
+                )}
               </div>
             )}
 
