@@ -1,0 +1,33 @@
+{
+  "name": "edacall-mod-ligacao-perdida",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Módulo EdaCall: manda WhatsApp para quem ligou e não foi atendido",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json && vite build --config vite.config.mts",
+    "build:ui": "vite build --config vite.config.mts",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.ui.json --noEmit"
+  },
+  "dependencies": {
+    "express": "^4.22.2",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.25",
+    "@types/node": "^22.15.18",
+    "@types/pg": "^8.15.6",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^5.0.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsx": "^4.23.13",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.12",
+    "vitest": "4.1.11"
+  }
+}

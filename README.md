@@ -11,6 +11,18 @@ MVP de PABX IP com:
 - Frontend Next.js + TypeScript + shadcn/ui
 - Docker Compose com backend, frontend, postgres e asterisk
 
+## Módulos opcionais
+
+Funções vendidas à parte (ex.: **Ligação perdida → WhatsApp**) rodam em
+containers próprios e aparecem no menu quando ativadas:
+
+```bash
+sudo ./edacall-modulo.sh listar
+sudo ./edacall-modulo.sh ativar ligacao-perdida
+```
+
+Como funcionam e como criar um módulo novo: [`modules/README.md`](modules/README.md).
+
 ## Executar com Docker
 
 1. Copie `.env.example` para `.env` e ajuste valores se necessário.

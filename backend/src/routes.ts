@@ -21,6 +21,7 @@ import { createInboundRoutesRouter } from "./routers/inboundRoutes.router";
 import { createAgentReportsRouter } from "./routers/agentReports.router";
 import { createMetricsRouter } from "./routers/metrics.router";
 import { recordError5xx } from "./services/metricsCollector";
+import { createModulesInternalRouter, createModulesRouter } from "./routers/modules.router";
 
 export const createRoutes = (io: Server) => {
   const router = express.Router();
@@ -33,6 +34,8 @@ export const createRoutes = (io: Server) => {
   router.use(createSupervisorRouter(io));
   router.use(createInternalRouter());
   router.use(createMetricsRouter());
+  // Módulos: registro/eventos (chave de módulo) e arquivos da tela (públicos)
+  router.use(createModulesInternalRouter());
 
   // A partir daqui, todas as rotas exigem token (equivalente ao antigo
   // `router.use(verifyToken)` no meio do arquivo monolítico).
@@ -51,6 +54,7 @@ export const createRoutes = (io: Server) => {
   router.use(createSettingsRouter());
   router.use(createInboundRoutesRouter());
   router.use(createAgentReportsRouter());
+  router.use(createModulesRouter());
 
   // ── Error middleware (captura erros de todos os handlers async via express-async-errors) ──
   router.use(

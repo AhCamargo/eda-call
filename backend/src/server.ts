@@ -14,6 +14,7 @@ import { startRecordingsSyncService } from "./services/recordingsSyncService";
 import { startUraReverseWorker } from "./services/uraReverseWorker";
 import { reprovisionInboundDialplans } from "./services/inboundReprovision";
 import { initStatusLogsFromCurrentState } from "./services/agentStatusLogger";
+import { startDomainEventsMaintenance } from "./services/domainEvents";
 
 const bootstrap = async () => {
   await syncDatabase();
@@ -54,6 +55,7 @@ const bootstrap = async () => {
   startAmiStatusMonitor(io);
   startRecordingsSyncService();
   startUraReverseWorker(io);
+  startDomainEventsMaintenance();
   // Em segundo plano: não atrasa a subida da API se o Asterisk demorar.
   reprovisionInboundDialplans().catch((error: any) =>
     logger.error(`[InboundReprovision] Falhou: ${error.message}`),

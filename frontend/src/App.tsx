@@ -26,6 +26,7 @@ import Seguranca from "./views/Seguranca";
 import Configuracoes from "./views/Configuracoes";
 import RoteamentoEntrada from "./views/RoteamentoEntrada";
 import { PbxProvider } from "./context/PbxContext";
+import ModuleHost from "./modules/ModuleHost";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -247,6 +248,8 @@ function App(): JSX.Element {
               <Route path="/relatorios" element={isSupervisorPlus ? <Relatorios /> : fallback} />
               <Route path="/relatorios/produtividade" element={isSupervisorPlus ? <RelatoriosProdutividade /> : fallback} />
               <Route path="/usuario" element={<Usuario />} />
+              {/* Módulos opcionais: a lista (e o papel exigido) vem do núcleo */}
+              <Route path="/m/:moduleId/*" element={<ModuleHost />} />
               {isAdmin && (
                 <Route path="/usuarios" element={<Usuarios />} />
               )}

@@ -3,6 +3,7 @@ import { getAmiClient, runCommand } from "../ami";
 import { Extension, CallLog, VoipLine } from "../db";
 import { logStatusChange } from "./agentStatusLogger";
 import logger from "../logger";
+import { callEvents } from "./callEvents";
 
 let started = false;
 let extensionsCache: any[] = [];
@@ -307,9 +308,9 @@ export const handleCdrEvent = async (event: any) => {
   const uniqueId = String(event.UniqueID || event.Uniqueid || "");
   if (!uniqueId) return;
 
-  // Evitar duplicatas
+  // Evitar duplicatas (o CallLog guarda só o primeiro registro de cada
+  // UniqueID; os eventos para os módulos juntam todos — ver callEvents.ts)
   const existing = await (CallLog as any).findOne({ where: { callUniqueId: uniqueId } });
-  if (existing) return;
 
   const src = String(event.Source || event.CallerID || "");
   const dst = String(event.Destination || "");
@@ -354,6 +355,27 @@ export const handleCdrEvent = async (event: any) => {
   const voipLineId: number | null = (srcLine ?? dstLine)?.id ?? null;
 
   const phoneNumber = direction === "inbound" ? src : dst || src;
+
+  // Para os módulos: "atendida" só quando uma pessoa atendeu. A URA e a fila
+  // atendem o canal (Disposition ANSWERED) mesmo quando ninguém pega a
+  // ligação; na recebida, só conta se o outro lado do registro é um ramal.
+  const answered = disposition.toUpperCase() === "ANSWERED";
+  const answeredByPerson =
+    direction === "inbound" ? answered && Boolean(dstExt) && !dstLine : answered;
+  const extensionNumber: string | null =
+    (direction === "inbound" ? dstExt?.number : srcExt?.number ?? dstExt?.number) ?? null;
+  callEvents.record({
+    uniqueId,
+    direction,
+    phoneNumber: phoneNumber || "",
+    answeredByPerson,
+    extension: extensionNumber,
+    voipLine: (srcLine ?? dstLine)?.name ?? null,
+    talkSeconds: billsec,
+    endedAt: new Date(),
+  });
+
+  if (existing) return;
 
   await (CallLog as any).create({
     phoneNumber: phoneNumber || "unknown",

@@ -457,6 +457,32 @@ export const InboundRoute = sequelize.define("InboundRoute", {
   enabled: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
 });
 
+// ── Fundação dos módulos (ver migrations/030-domain-events-and-modules.sql) ──
+// Fila de fatos do núcleo, só de acréscimo. Os módulos leem por id crescente.
+export const DomainEvent = sequelize.define(
+  "DomainEvent",
+  {
+    id: { type: DataTypes.BIGINT, autoIncrement: true, primaryKey: true },
+    type: { type: DataTypes.STRING(100), allowNull: false },
+    payload: { type: DataTypes.JSONB, allowNull: false },
+  },
+  { tableName: "DomainEvents", updatedAt: false },
+);
+
+// Módulos que se registraram no núcleo (heartbeat em lastSeenAt).
+export const ModuleRegistration = sequelize.define(
+  "ModuleRegistration",
+  {
+    id: { type: DataTypes.STRING(64), primaryKey: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    version: { type: DataTypes.STRING(50), allowNull: false, defaultValue: "0.0.0" },
+    internalUrl: { type: DataTypes.STRING, allowNull: false },
+    manifest: { type: DataTypes.JSONB, allowNull: false, defaultValue: {} },
+    lastSeenAt: { type: DataTypes.DATE, allowNull: false },
+  },
+  { tableName: "Modules" },
+);
+
 // AgentStatusLog belongs to Extension
 Extension.hasMany(AgentStatusLog, { foreignKey: "extensionId", onDelete: "CASCADE" });
 AgentStatusLog.belongsTo(Extension, { foreignKey: "extensionId" });

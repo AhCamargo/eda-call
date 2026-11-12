@@ -44,6 +44,9 @@ const config = {
     process.env.ASTERISK_INBOUND_ROUTES_FILE ||
     "/etc/asterisk-custom/extensions_inbound.conf",
   asteriskWsUrl: process.env.ASTERISK_WS_URL || "ws://localhost:8088/ws",
+  // Chave compartilhada entre o núcleo e os módulos (containers opcionais).
+  // Vazia = nenhum módulo pode se registrar nem ler eventos.
+  modulesSecret: process.env.MODULES_SECRET || "",
   ami: {
     host: process.env.AMI_HOST || "asterisk",
     port: Number(process.env.AMI_PORT || 5038),

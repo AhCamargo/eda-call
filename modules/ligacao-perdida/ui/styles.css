@@ -1,0 +1,77 @@
+/* Tudo escopado em .lp-root para não vazar no painel do EdaCall.
+   Paleta = tokens do EdaCall (fundo #0c0e11, cartão #14171c, borda #252a32,
+   primária #3d6bf5). A fonte vem do painel (IBM Plex Sans). */
+.lp-root { color: #eceef2; font-size: 14px; max-width: 980px; display: flex; flex-direction: column; gap: 16px; }
+.lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
+.lp-head h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.lp-head p { margin: 0; color: #a0a7b3; line-height: 1.5; max-width: 760px; }
+
+.lp-card { background: #14171c; border: 1px solid #252a32; border-radius: 10px; padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+.lp-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lp-card h2 { font-size: 15px; font-weight: 600; margin: 0; }
+
+.lp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.lp-stat { background: #14171c; border: 1px solid #252a32; border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.lp-stat-value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.lp-stat-label { font-size: 12px; color: #a0a7b3; }
+
+.lp-muted { color: #a0a7b3; margin: 0; }
+.lp-hint { color: #7f8794; font-size: 12px; margin: 0; line-height: 1.45; }
+
+.lp-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.lp-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.lp-ok { color: #45d98f; background: rgba(69, 217, 143, 0.12); }
+.lp-warn { color: #f5b941; background: rgba(245, 185, 65, 0.12); }
+.lp-bad { color: #ff7a72; background: rgba(255, 122, 114, 0.12); }
+.lp-muted.lp-pill, .lp-pill.lp-muted { color: #a0a7b3; background: #1c2027; }
+.lp-text-ok { color: #45d98f; } .lp-text-warn { color: #f5b941; } .lp-text-bad { color: #ff7a72; } .lp-text-muted { color: #a0a7b3; }
+
+.lp-alert { border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+.lp-alert-bad { background: #2b1311; border: 1px solid #5a2420; color: #ff7a72; }
+.lp-alert-ok { background: #0f2419; border: 1px solid #1d4a33; color: #45d98f; }
+
+.lp-qr { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; }
+.lp-qr img, .lp-qr-empty { width: 220px; height: 220px; border-radius: 8px; background: #fff; padding: 8px; }
+.lp-qr-empty { display: grid; place-items: center; color: #555; font-size: 13px; }
+.lp-qr ol { margin: 0; padding-left: 18px; color: #a0a7b3; line-height: 1.8; }
+
+.lp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.lp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.lp-field { display: flex; flex-direction: column; gap: 6px; }
+.lp-label { font-size: 12px; font-weight: 500; color: #a0a7b3; }
+.lp-root input:not([type="checkbox"]), .lp-root textarea {
+  width: 100%; background: #0c0e11; border: 1px solid #252a32; border-radius: 6px; color: #eceef2;
+  padding: 8px 10px; font: inherit; outline: none;
+}
+.lp-root input:focus, .lp-root textarea:focus { border-color: #3d6bf5; }
+.lp-root input:disabled, .lp-root textarea:disabled { opacity: 0.7; }
+.lp-root textarea { resize: vertical; line-height: 1.5; }
+.lp-root input[type="time"] { width: 120px; color-scheme: dark; }
+
+.lp-window { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.lp-days { display: flex; gap: 4px; margin-left: 8px; }
+.lp-day { background: #1c2027; border: 1px solid #252a32; color: #a0a7b3; border-radius: 6px; padding: 6px 9px; font: inherit; font-size: 12px; cursor: pointer; }
+.lp-day.on { background: #16213f; border-color: #3d6bf5; color: #8eaeff; }
+
+.lp-check { display: flex; align-items: center; gap: 8px; color: #a0a7b3; }
+.lp-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: #a0a7b3; font-size: 13px; }
+
+.lp-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.lp-test { display: flex; gap: 8px; align-items: center; }
+.lp-test input { width: 220px !important; }
+.lp-btn { background: #1c2027; border: 1px solid #252a32; color: #eceef2; border-radius: 6px; padding: 8px 14px; font: inherit; font-weight: 500; cursor: pointer; }
+.lp-btn:hover:not(:disabled) { border-color: #3a414c; }
+.lp-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.lp-primary { background: #3d6bf5; border-color: #3d6bf5; color: #fff; }
+.lp-primary:hover:not(:disabled) { background: #2f5ce6; }
+.lp-danger { color: #ff7a72; }
+
+.lp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lp-table th { text-align: left; font-weight: 500; color: #7f8794; font-size: 12px; padding: 8px 10px; border-bottom: 1px solid #252a32; }
+.lp-table td { padding: 9px 10px; border-bottom: 1px solid #1c2027; vertical-align: middle; }
+.lp-table tr:last-child td { border-bottom: none; }
+
+@media (max-width: 760px) {
+  .lp-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .lp-grid, .lp-grid-3 { grid-template-columns: 1fr; }
+}

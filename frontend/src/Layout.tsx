@@ -26,7 +26,32 @@ import {
   ShieldAlert,
   Settings2,
   PhoneIncoming,
+  Puzzle,
+  MessageCircle,
+  PhoneMissed,
+  Webhook,
+  Bot,
 } from "lucide-react";
+import { useModules } from "./modules/useModules";
+import type { ModuleInfo } from "./modules/contract";
+
+// Ícones que um módulo pode pedir pelo nome no manifesto (ui.menu.icon).
+const MODULE_ICONS: Record<string, NavItem["icon"]> = {
+  "message-circle": MessageCircle,
+  "phone-missed": PhoneMissed,
+  webhook: Webhook,
+  bot: Bot,
+  puzzle: Puzzle,
+};
+
+const moduleNavItems = (modules: ModuleInfo[]): NavItem[] =>
+  modules.map((m) => ({
+    to: `/m/${m.id}`,
+    label: m.ui.menu.label,
+    hint: m.ui.menu.hint,
+    icon: MODULE_ICONS[m.ui.menu.icon ?? ""] ?? Puzzle,
+    iconColor: "#8eaeff",
+  }));
 
 const EXPANDED: number = 232;
 const COLLAPSED: number = 60;
@@ -115,6 +140,7 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
   const { user } = usePbx();
   const role: string = user?.role || "admin";
   const [collapsed, setCollapsed] = useState<boolean>(false);
+  const { modules } = useModules();
 
   const changeLanguage = (code: string): void => {
     localStorage.setItem("language", code);
@@ -140,7 +166,9 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
       iconColor: "#94a3b8",
     };
 
-    if (role === "agent") return [{ items: [myExtension, myProfile] }];
+    if (role === "agent") {
+      return [{ items: [myExtension, ...moduleNavItems(modules), myProfile] }];
+    }
 
     const isAdmin = role === "admin";
 
@@ -290,14 +318,18 @@ const Layout: FC<LayoutProps> = ({ onLogout }) => {
         ]
       : [myProfile];
 
+    // Módulos opcionais instalados neste servidor (cada um é um container).
+    const moduleItems = moduleNavItems(modules);
+
     return [
       { label: "Acompanhar", items: monitor },
       { label: "Configurar", items: setup },
       { label: t("menu.campaigns"), items: campaigns },
       { label: "Resultados", items: results },
+      ...(moduleItems.length ? [{ label: "Módulos", items: moduleItems }] : []),
       { label: "Sistema", items: system },
     ];
-  }, [role, t]);
+  }, [role, t, modules]);
 
   const roleInfo: RoleInfo = ROLE_INFO[role] || ROLE_INFO.agent;
   const sidebarWidth: number = collapsed ? COLLAPSED : EXPANDED;

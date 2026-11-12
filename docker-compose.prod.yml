@@ -44,6 +44,8 @@ services:
       ASTERISK_SIP_NAT_FILE: /etc/asterisk/sip_nat_runtime.conf
       ASTERISK_RECORDINGS_DIR: /asterisk-recordings
       ASTERISK_SOUNDS_DIR: /asterisk-sounds
+      # Chave que os módulos opcionais usam para falar com o núcleo
+      MODULES_SECRET: ${MODULES_SECRET:-}
     ports:
       - "5000:5000"
     volumes:
@@ -69,6 +71,52 @@ services:
       - edacall_config:/edacall-config
     restart: unless-stopped
 
+  # ── Módulos opcionais ("Lego") ───────────────────────────────────────────────
+  # Cada módulo só sobe quando o profile dele está em COMPOSE_PROFILES no .env.
+  # Ative/desative com: ./edacall-modulo.sh ativar|desativar <módulo>
+
+  # WhatsApp por QR Code (WAHA Core, gratuito). Usado pelo módulo
+  # ligacao-perdida. Só fala com a rede interna; não publica porta.
+  waha:
+    image: devlikeapro/waha:${WAHA_IMAGE_TAG:-latest}
+    container_name: edacall_waha
+    profiles: ["ligacao-perdida"]
+    environment:
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      WHATSAPP_DEFAULT_ENGINE: NOWEB
+      WHATSAPP_RESTART_ALL_SESSIONS: "True"
+      WAHA_DASHBOARD_ENABLED: "False"
+      WHATSAPP_SWAGGER_ENABLED: "False"
+      WAHA_PRINT_QR: "False"
+      TZ: America/Sao_Paulo
+    volumes:
+      - waha_sessions:/app/.sessions
+    restart: unless-stopped
+
+  mod-ligacao-perdida:
+    build:
+      context: ./modules/ligacao-perdida
+      dockerfile: Dockerfile
+    container_name: edacall_mod_ligacao_perdida
+    profiles: ["ligacao-perdida"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      backend:
+        condition: service_started
+      waha:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-edacall}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-edacall}
+      MODULES_SECRET: ${MODULES_SECRET:-}
+      CORE_URL: http://backend:5000
+      MODULE_INTERNAL_URL: http://mod-ligacao-perdida:4100
+      WAHA_URL: http://waha:3000
+      WAHA_API_KEY: ${WAHA_API_KEY:-}
+      MODULE_TZ: America/Sao_Paulo
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   edacall_config:
+  waha_sessions:

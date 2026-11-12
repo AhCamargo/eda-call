@@ -9,6 +9,8 @@ vi.mock("../db", () => ({ Extension, CallLog, VoipLine }));
 vi.mock("../ami", () => ({ getAmiClient: vi.fn(), runCommand: vi.fn() }));
 vi.mock("../logger", () => ({ default: { info: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 vi.mock("./agentStatusLogger", () => ({ logStatusChange: vi.fn() }));
+const { record } = vi.hoisted(() => ({ record: vi.fn() }));
+vi.mock("./callEvents", () => ({ callEvents: { record } }));
 
 import { withAmiFieldNames, handleCdrEvent } from "./amiStatusMonitor";
 
@@ -128,5 +130,25 @@ describe("handleCdrEvent — direção da ligação", () => {
     CallLog.findOne.mockResolvedValue({ id: 99 });
     await cdr({ source: "2001", destination: "2002" });
     expect(CallLog.create).not.toHaveBeenCalled();
+  });
+
+  it("recebida: só conta como atendida por pessoa quando o outro lado é um ramal", async () => {
+    await cdr({
+      source: "11999990000",
+      destination: "s",
+      channel: "SIP/efix-00000001",
+      destinationchannel: "SIP/2001-00000002",
+    });
+    expect(record).toHaveBeenLastCalledWith(expect.objectContaining({ direction: "inbound", answeredByPerson: true }));
+
+    // URA/fila atendeu (ANSWERED) mas ninguém pegou: sem canal de ramal
+    await cdr({ source: "11999990000", destination: "s", channel: "SIP/efix-00000003" });
+    expect(record).toHaveBeenLastCalledWith(expect.objectContaining({ direction: "inbound", answeredByPerson: false }));
+  });
+
+  it("registro duplicado ainda alimenta os eventos (junta URA + ramal)", async () => {
+    CallLog.findOne.mockResolvedValue({ id: 99 });
+    await cdr({ source: "11999990000", destination: "s", channel: "SIP/efix-00000001" });
+    expect(record).toHaveBeenCalledTimes(1);
   });
 });

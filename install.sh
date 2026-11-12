@@ -139,6 +139,10 @@ AMI_PASSWORD=${AMI_PASSWORD}
 # ── Frontend ──────────────────────────────────────────────────────────────────
 VITE_API_URL=${VITE_API_URL}
 
+# ── Módulos opcionais (./edacall-modulo.sh listar | ativar | desativar) ───────
+MODULES_SECRET=$(gen_secret 40)
+COMPOSE_PROFILES=
+
 # ── Backup automático (banco de dados + gravações) ────────────────────────────
 BACKUP_DIR=/var/backups/edacall
 BACKUP_RETENTION_DAYS=14

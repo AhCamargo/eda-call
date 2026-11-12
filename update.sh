@@ -152,6 +152,16 @@ else
   docker compose -f docker-compose.prod.yml up -d $SERVICES
 fi
 
+# ── 4b. Módulos opcionais ativos (COMPOSE_PROFILES no .env) ──────────────────
+ACTIVE_PROFILES=$(grep -E '^COMPOSE_PROFILES=' .env 2>/dev/null | tail -1 | cut -d= -f2- || true)
+if [[ -n "$ACTIVE_PROFILES" ]]; then
+  if [[ -z "${UPDATED_FILES:-}" ]] || echo "${UPDATED_FILES:-}" | grep -qE "^modules/|^(docker-compose)|todos os arquivos"; then
+    info "Atualizando módulos ativos: ${ACTIVE_PROFILES}"
+    # Sem nomes de serviço: o compose usa os profiles do .env e só mexe no que está ativo
+    docker compose -f docker-compose.prod.yml up -d --build
+  fi
+fi
+
 # ── 5. Verifica saúde do backend ──────────────────────────────────────────────
 BACKEND_URL="http://localhost:5000/health"
 MAX_WAIT=60

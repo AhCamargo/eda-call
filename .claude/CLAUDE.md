@@ -102,6 +102,22 @@ eda-call/
 
 **Roles:** `admin` > `supervisor` > `agent`
 
+### Módulos opcionais ("Lego") — `modules/`
+
+Funções vendidas à parte rodam em containers próprios (profile do Compose), com
+tela carregada em `/m/<id>` pelo `frontend/src/modules/ModuleHost.tsx`. Contrato
+completo em `modules/README.md`. Pontos do núcleo:
+
+- `services/callEvents.ts` junta os registros Cdr de um mesmo UniqueID e publica
+  `call.ended` / `call.missed` em `DomainEvents` (`services/domainEvents.ts`)
+- `routers/modules.router.ts` — registro/eventos (chave `MODULES_SECRET`) e
+  proxy `/modules/:id/ui|api/*` (login + `minRole` do manifesto)
+- Ligar/desligar: `./edacall-modulo.sh ativar|desativar <id>`
+
+| Módulo | Pasta | O que faz |
+|---|---|---|
+| Ligação perdida | `modules/ligacao-perdida` | WhatsApp (WAHA) para quem ligou e não foi atendido |
+
 ---
 
 ## Padrões obrigatórios
@@ -235,6 +251,8 @@ ASTERISK_SIP_CUSTOM_FILE
 ASTERISK_EXTENSIONS_CUSTOM_FILE
 ASTERISK_QUEUES_CUSTOM_FILE
 CORS_ORIGIN           # opcional — origens permitidas (vírgula); padrão "*"
+MODULES_SECRET        # chave núcleo ↔ módulos (gerada pelo install.sh / edacall-modulo.sh)
+COMPOSE_PROFILES      # módulos ativos, ex.: ligacao-perdida
 ```
 
 ---
