@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import TimeSelect from "../components/TimeSelect";
 import { Link } from "react-router-dom";
 import {
   Phone,
@@ -629,24 +630,24 @@ function IvrDialog({
                       </select>
                     </FieldRow>
                     <FieldRow label="Das">
-                      <input
-                        type="time"
+                      <TimeSelect
                         value={rule.open}
-                        onChange={(e) => {
+                        aria-label="Abre às"
+                        onChange={(v) => {
                           const rs = [...rules];
-                          rs[idx] = { ...rs[idx], open: e.target.value };
+                          rs[idx] = { ...rs[idx], open: v };
                           setRules(rs);
                         }}
                         className={inputCls()}
                       />
                     </FieldRow>
                     <FieldRow label="Até">
-                      <input
-                        type="time"
+                      <TimeSelect
                         value={rule.close}
-                        onChange={(e) => {
+                        aria-label="Fecha às"
+                        onChange={(v) => {
                           const rs = [...rules];
-                          rs[idx] = { ...rs[idx], close: e.target.value };
+                          rs[idx] = { ...rs[idx], close: v };
                           setRules(rs);
                         }}
                         className={inputCls()}
