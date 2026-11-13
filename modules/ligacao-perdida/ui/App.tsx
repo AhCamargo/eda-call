@@ -32,6 +32,8 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
   const isAdmin = ctx.user.role === "admin";
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [form, setForm] = useState<Settings | null>(null);
+  // Última configuração gravada no servidor — para saber se há alteração por salvar.
+  const [saved, setSaved] = useState<Settings | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [qr, setQr] = useState<string>("");
   const [error, setError] = useState<string>("");
@@ -45,6 +47,7 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
       setStatus(s);
       setHistory(h.items);
       setForm((f) => f ?? s.settings);
+      setSaved((v) => v ?? s.settings);
       setError("");
     } catch (e: any) {
       setError(e.message);
@@ -97,6 +100,52 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
     }
   };
 
+  const dirty = !!form && !!saved && JSON.stringify(form) !== JSON.stringify(saved);
+
+  // Fechar ou recarregar a aba com alteração por salvar pede confirmação.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
+
+  // Botão Recarregar (como nas outras telas do EdaCall): busca tudo de novo no
+  // servidor e descarta o que não foi salvo.
+  const reload = async () => {
+    if (dirty && !window.confirm("Descartar as alterações que ainda não foram salvas?")) return;
+    setBusy("reload");
+    try {
+      const [s, h] = await Promise.all([api.status(), api.history()]);
+      setStatus(s);
+      setHistory(h.items);
+      setForm(s.settings);
+      setSaved(s.settings);
+      setError("");
+      setNotice("");
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setBusy("");
+    }
+  };
+
+  // Ligar/desligar grava na hora: é a chave geral do envio, não pode depender
+  // de lembrar de clicar em Salvar.
+  const toggleEnabled = (enabled: boolean) =>
+    run(
+      "toggle",
+      () =>
+        api.saveSettings({ ...(saved ?? form!), enabled }).then((s) => {
+          setSaved(s);
+          setForm((f) => (f ? { ...f, enabled: s.enabled } : s));
+        }),
+      enabled ? "Envio automático ligado." : "Envio automático desligado.",
+    );
+
   const set = <K extends keyof Settings>(key: K, value: Settings[K]) => setForm((f) => (f ? { ...f, [key]: value } : f));
   const setWindow = (patch: Partial<Settings["window"]>) =>
     setForm((f) => (f ? { ...f, window: { ...f.window, ...patch } } : f));
@@ -106,7 +155,27 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
   return (
     <div className="lp-root">
       <header className="lp-head">
-        <h1>Ligação perdida → WhatsApp</h1>
+        <div className="lp-head-row">
+          <h1>Ligação perdida → WhatsApp</h1>
+          <button className="lp-icon-btn" onClick={reload} disabled={!!busy} title="Recarregar" aria-label="Recarregar">
+            <svg
+              className={busy === "reload" ? "lp-spin" : ""}
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+              <path d="M21 3v5h-5" />
+              <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+              <path d="M8 16H3v5" />
+            </svg>
+          </button>
+        </div>
         <p>
           Quando alguém liga e ninguém atende, o EdaCall manda uma mensagem no WhatsApp dessa pessoa. Se um atendente
           retornar a ligação antes, a mensagem não sai.
@@ -174,11 +243,16 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
             <label className="lp-switch">
               <input
                 type="checkbox"
-                checked={form.enabled}
-                disabled={!isAdmin}
-                onChange={(e) => set("enabled", e.target.checked)}
+                checked={saved?.enabled ?? form.enabled}
+                disabled={!isAdmin || !!busy}
+                onChange={(e) => toggleEnabled(e.target.checked)}
+                role="switch"
+                aria-checked={saved?.enabled ?? form.enabled}
               />
-              <span>{form.enabled ? "Ligada" : "Desligada"}</span>
+              <span className="lp-track" aria-hidden="true">
+                <span className="lp-thumb" />
+              </span>
+              <span>{busy === "toggle" ? "Salvando…" : (saved?.enabled ?? form.enabled) ? "Ligada" : "Desligada"}</span>
             </label>
           </div>
 
@@ -268,10 +342,21 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
               <button
                 className="lp-btn lp-primary"
                 disabled={!!busy}
-                onClick={() => run("save", () => api.saveSettings(form).then((s) => setForm(s)), "Configuração salva.")}
+                onClick={() =>
+                  run(
+                    "save",
+                    () =>
+                      api.saveSettings({ ...form, enabled: saved?.enabled ?? form.enabled }).then((s) => {
+                        setForm(s);
+                        setSaved(s);
+                      }),
+                    "Configuração salva.",
+                  )
+                }
               >
                 {busy === "save" ? "Salvando…" : "Salvar"}
               </button>
+              {dirty && <span className="lp-dirty">Alterações não salvas</span>}
               <div className="lp-test">
                 <input placeholder="DDD + celular para teste" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} />
                 <button

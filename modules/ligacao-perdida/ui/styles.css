@@ -3,6 +3,13 @@
    primária #3d6bf5). A fonte vem do painel (IBM Plex Sans). */
 .lp-root { color: #eceef2; font-size: 14px; max-width: 980px; display: flex; flex-direction: column; gap: 16px; }
 .lp-root *, .lp-root *::before, .lp-root *::after { box-sizing: border-box; }
+.lp-head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.lp-icon-btn { background: transparent; border: 1px solid #252a32; color: #a0a7b3; border-radius: 6px; width: 34px; height: 34px; display: grid; place-items: center; cursor: pointer; }
+.lp-icon-btn:hover:not(:disabled) { color: #eceef2; border-color: #3a414c; }
+.lp-icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.lp-spin { animation: lp-spin 0.9s linear infinite; }
+@keyframes lp-spin { to { transform: rotate(360deg); } }
+.lp-dirty { color: #f5b941; font-size: 12px; margin-right: auto; }
 .lp-head h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
 .lp-head p { margin: 0; color: #a0a7b3; line-height: 1.5; max-width: 760px; }
 
@@ -54,7 +61,16 @@
 .lp-day.on { background: #16213f; border-color: #3d6bf5; color: #8eaeff; }
 
 .lp-check { display: flex; align-items: center; gap: 8px; color: #a0a7b3; }
-.lp-switch { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; color: #a0a7b3; font-size: 13px; }
+/* Chave liga/desliga: o checkbox continua lá (acessível pelo teclado), só invisível */
+.lp-switch { position: relative; display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: #a0a7b3; font-size: 13px; user-select: none; }
+.lp-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.lp-track { position: relative; width: 38px; height: 22px; border-radius: 999px; background: #2a2f38; border: 1px solid #3a414c; transition: background 0.15s, border-color 0.15s; flex-shrink: 0; }
+.lp-thumb { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #a0a7b3; transition: transform 0.15s, background 0.15s; }
+.lp-switch input:checked + .lp-track { background: #3d6bf5; border-color: #3d6bf5; }
+.lp-switch input:checked + .lp-track .lp-thumb { transform: translateX(16px); background: #fff; }
+.lp-switch input:focus-visible + .lp-track { outline: 2px solid #8eaeff; outline-offset: 2px; }
+.lp-switch input:disabled + .lp-track { opacity: 0.6; }
+.lp-switch:has(input:checked) > span:last-child { color: #45d98f; }
 
 .lp-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .lp-test { display: flex; gap: 8px; align-items: center; }
