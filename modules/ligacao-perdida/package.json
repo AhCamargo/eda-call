@@ -1,6 +1,6 @@
 {
   "name": "edacall-mod-ligacao-perdida",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Módulo EdaCall: manda WhatsApp para quem ligou e não foi atendido",
   "main": "dist/server.js",

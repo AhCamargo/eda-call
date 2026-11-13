@@ -309,9 +309,9 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
 
           <Field label="Horário de envio" hint="Fora desse horário a mensagem espera o próximo período">
             <div className="lp-window">
-              <input type="time" value={form.window.start} disabled={!isAdmin} onChange={(e) => setWindow({ start: e.target.value })} />
+              <TimeSelect value={form.window.start} disabled={!isAdmin} onChange={(v) => setWindow({ start: v })} label="Início" />
               <span>até</span>
-              <input type="time" value={form.window.end} disabled={!isAdmin} onChange={(e) => setWindow({ end: e.target.value })} />
+              <TimeSelect value={form.window.end} disabled={!isAdmin} onChange={(v) => setWindow({ end: v })} label="Fim" />
               <div className="lp-days">
                 {DAYS.map((d, i) => (
                   <button
@@ -410,6 +410,24 @@ export default function App({ ctx }: { ctx: ModuleContext }) {
         )}
       </section>
     </div>
+  );
+}
+
+// Horários de meia em meia hora, no formato 24 h. O campo nativo de hora
+// segue o idioma do navegador (AM/PM em inglês) e é ruim de editar.
+const TIMES = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
+
+function TimeSelect({ value, onChange, disabled, label }: { value: string; onChange: (v: string) => void; disabled?: boolean; label: string }) {
+  // Valor salvo fora da grade (ex.: 08:10) continua aparecendo como opção.
+  const options = TIMES.includes(value) ? TIMES : [...TIMES, value].sort();
+  return (
+    <select className="lp-select" value={value} disabled={disabled} aria-label={label} onChange={(e) => onChange(e.target.value)}>
+      {options.map((t) => (
+        <option key={t} value={t}>
+          {t}
+        </option>
+      ))}
+    </select>
   );
 }
 

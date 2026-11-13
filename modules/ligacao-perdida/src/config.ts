@@ -8,7 +8,7 @@ const required = (name: string): string => {
 };
 
 export const MODULE_ID = "ligacao-perdida";
-export const MODULE_VERSION = "1.0.1";
+export const MODULE_VERSION = "1.0.2";
 
 export const loadConfig = () => ({
   port: Number(process.env.PORT || 4100),
